@@ -11,7 +11,8 @@ const HEIGHT = 600;
 
 pub fn main() void {
     const window = initWindow();
-    initVulkan();
+    const vulkan_instance = initVulkan();
+    _ = vulkan_instance;
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -37,7 +38,34 @@ fn initWindow() *c.GLFWwindow {
     return c.glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", null, null) orelse fatal("GLFW window creation failed");
 }
 
-fn initVulkan() void {}
+fn initVulkan() c.VkInstance {
+    const app_info = c.VkApplicationInfo{
+        .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pApplicationName = "Hello Triangle",
+        .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
+        .pEngineName = "No Engine",
+        .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion = c.VK_API_VERSION_1_0,
+    };
+
+    var glfw_extension_count: u32 = 0;
+    const glfw_extensions = c.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+
+    const create_info = c.VkInstanceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &app_info,
+        .enabledExtensionCount = glfw_extension_count,
+        .ppEnabledExtensionNames = glfw_extensions,
+        .enabledLayerCount = 0,
+    };
+
+    var result: c.VkInstance = undefined;
+    const create_res = c.vkCreateInstance(&create_info, null, &result);
+    if (create_res != c.VK_SUCCESS) {
+        fatal("Vulkan instance creation failed");
+    }
+    return result;
+}
 
 fn fatal(comptime mess: []const u8) noreturn {
     std.debug.print(mess, .{});
