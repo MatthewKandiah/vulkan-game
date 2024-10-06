@@ -22,6 +22,7 @@ pub fn main() void {
 
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
+    const surface = createSurface(vulkan_instance, window);
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance);
     const queue_family_indices = findQueueFamilies(allocator, physical_device);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
@@ -35,6 +36,7 @@ pub fn main() void {
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
     c.vkDestroyDevice(logical_device, null);
+    c.vkDestroySurfaceKHR(vulkan_instance, surface, null);
     c.vkDestroyInstance(vulkan_instance, null);
     c.glfwDestroyWindow(window);
     c.glfwTerminate();
@@ -129,6 +131,16 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
         fatal("Vulkan instance creation failed");
     }
     return result;
+}
+
+fn createSurface(instance: c.VkInstance, window: *c.GLFWwindow) c.VkSurfaceKHR {
+    var surface: c.VkSurfaceKHR = undefined;
+    const res = c.glfwCreateWindowSurface(instance, window, null, &surface);
+    if (res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{res});
+        fatal("Failed to create glfw surface");
+    }
+    return surface;
 }
 
 fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.VkPhysicalDevice {
