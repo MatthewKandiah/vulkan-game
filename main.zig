@@ -10,9 +10,11 @@ const WIDTH = 800;
 const HEIGHT = 600;
 
 pub fn main() void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
     const window = initWindow();
-    const vulkan_instance = initVulkan();
-    _ = vulkan_instance;
+    const vulkan_instance = initVulkan(allocator);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -20,6 +22,7 @@ pub fn main() void {
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroyInstance(vulkan_instance, null);
     c.glfwDestroyWindow(window);
     c.glfwTerminate();
 }
@@ -38,7 +41,7 @@ fn initWindow() *c.GLFWwindow {
     return c.glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", null, null) orelse fatal("GLFW window creation failed");
 }
 
-fn initVulkan() c.VkInstance {
+fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
     const app_info = c.VkApplicationInfo{
         .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = "Hello Triangle",
@@ -50,6 +53,30 @@ fn initVulkan() c.VkInstance {
 
     var glfw_extension_count: u32 = 0;
     const glfw_extensions = c.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    const glfw_extensions_slice = glfw_extensions[0..glfw_extension_count];
+
+    var supported_extension_count: u32 = 0;
+    _ = c.vkEnumerateInstanceExtensionProperties(null, &supported_extension_count, null);
+    var supported_extensions = allocator.alloc(c.VkExtensionProperties, supported_extension_count) catch fatalQuiet();
+    defer allocator.free(supported_extensions);
+    _ = c.vkEnumerateInstanceExtensionProperties(null, &supported_extension_count, supported_extensions.ptr);
+    supported_extensions.len = supported_extension_count;
+
+    for (glfw_extensions_slice) |glfw_x| {
+        const len = std.mem.len(glfw_x);
+        var found = false;
+        std.debug.print("{s} required ... ", .{glfw_x});
+        for (supported_extensions) |x| {
+            if (std.mem.eql(u8, glfw_x[0..len], x.extensionName[0..len])) {
+                std.debug.print("supported\n", .{});
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            fatal("Unsupported extensions required");
+        }
+    }
 
     const create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -62,6 +89,7 @@ fn initVulkan() c.VkInstance {
     var result: c.VkInstance = undefined;
     const create_res = c.vkCreateInstance(&create_info, null, &result);
     if (create_res != c.VK_SUCCESS) {
+        std.debug.print("create_res: {}\n", .{create_res});
         fatal("Vulkan instance creation failed");
     }
     return result;
