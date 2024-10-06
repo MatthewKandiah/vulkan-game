@@ -23,8 +23,8 @@ pub fn main() void {
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
     const surface = createSurface(vulkan_instance, window);
-    const physical_device = pickPhysicalDevice(allocator, vulkan_instance);
-    const queue_family_indices = findQueueFamilies(allocator, physical_device);
+    const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
+    const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -143,7 +143,7 @@ fn createSurface(instance: c.VkInstance, window: *c.GLFWwindow) c.VkSurfaceKHR {
     return surface;
 }
 
-fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.VkPhysicalDevice {
+fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surface: c.VkSurfaceKHR) c.VkPhysicalDevice {
     var device_count: u32 = 0;
     _ = c.vkEnumeratePhysicalDevices(instance, &device_count, null);
 
@@ -157,8 +157,8 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.Vk
 
     // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
     for (devices) |d| {
-        const indices = findQueueFamilies(allocator, d);
-        if (indices.graphics_family != null) {
+        const indices = findQueueFamilies(allocator, d, surface);
+        if (indices.isComplete()) {
             return d;
         }
     }
@@ -201,11 +201,19 @@ fn fatalQuiet() noreturn {
 
 const QueueFamilyIndices = struct {
     graphics_family: ?u32,
+    present_family: ?u32,
+
+    const Self = @This();
+
+    fn isComplete(self: Self) bool {
+        return self.graphics_family != null and self.present_family != null;
+    }
 };
 
-fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice) QueueFamilyIndices {
+fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) QueueFamilyIndices {
     var indices = QueueFamilyIndices{
         .graphics_family = null,
+        .present_family = null,
     };
 
     var queue_family_count: u32 = 0;
@@ -217,6 +225,12 @@ fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice) Q
     for (queue_families, 0..) |qf, i| {
         if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
             indices.graphics_family = @intCast(i);
+        }
+
+        var present_support: u32 = c.VK_FALSE;
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface, &present_support);
+        if (present_support != c.VK_FALSE) {
+            indices.present_family = @intCast(i);
         }
     }
     return indices;
