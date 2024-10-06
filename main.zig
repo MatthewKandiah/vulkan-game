@@ -23,7 +23,10 @@ pub fn main() void {
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance);
-    const logical_device = createLogicalDevice(allocator, physical_device);
+    const queue_family_indices = findQueueFamilies(allocator, physical_device);
+    const logical_device = createLogicalDevice(physical_device, queue_family_indices);
+    var graphics_queue: c.VkQueue = undefined;
+    c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -150,11 +153,10 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.Vk
     fatal("Failed to find suitable physical GPU");
 }
 
-fn createLogicalDevice(allocator: std.mem.Allocator, physical_device: c.VkPhysicalDevice) c.VkDevice {
-    const indices = findQueueFamilies(allocator, physical_device);
+fn createLogicalDevice(physical_device: c.VkPhysicalDevice, family_indices: QueueFamilyIndices) c.VkDevice {
     const queue_create_info = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = indices.graphics_family.?,
+        .queueFamilyIndex = family_indices.graphics_family.?,
         .queueCount = 1,
         .pQueuePriorities = &[_]f32{1},
     };
