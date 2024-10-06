@@ -23,7 +23,7 @@ pub fn main() void {
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance);
-    _ = physical_device;
+    const logical_device = createLogicalDevice(allocator, physical_device);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -31,6 +31,7 @@ pub fn main() void {
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroyDevice(logical_device, null);
     c.vkDestroyInstance(vulkan_instance, null);
     c.glfwDestroyWindow(window);
     c.glfwTerminate();
@@ -149,6 +150,32 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.Vk
     fatal("Failed to find suitable physical GPU");
 }
 
+fn createLogicalDevice(allocator: std.mem.Allocator, physical_device: c.VkPhysicalDevice) c.VkDevice {
+    const indices = findQueueFamilies(allocator, physical_device);
+    const queue_create_info = c.VkDeviceQueueCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = indices.graphics_family.?,
+        .queueCount = 1,
+        .pQueuePriorities = &[_]f32{1},
+    };
+    const device_features = std.mem.zeroes(c.VkPhysicalDeviceFeatures);
+    const create_info = c.VkDeviceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pQueueCreateInfos = &queue_create_info,
+        .queueCreateInfoCount = 1,
+        .pEnabledFeatures = &device_features,
+        .enabledExtensionCount = 0,
+        .enabledLayerCount = 0,
+    };
+    var device: c.VkDevice = undefined;
+    const res = c.vkCreateDevice(physical_device, &create_info, null, &device);
+    if (res != c.VK_SUCCESS) {
+        std.debug.print("res: {}", .{res});
+        fatal("Failed to create logical device");
+    }
+    return device;
+}
+
 fn fatal(comptime mess: []const u8) noreturn {
     std.debug.print(mess, .{});
     std.process.exit(1);
@@ -174,7 +201,6 @@ fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice) Q
     c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
 
     for (queue_families, 0..) |qf, i| {
-        std.debug.print("{}. {b}\n", .{ i, qf.queueFlags });
         if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
             indices.graphics_family = @intCast(i);
         }
