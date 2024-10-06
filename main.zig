@@ -67,10 +67,9 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
     // checkExtensionsSupport
     var supported_extension_count: u32 = 0;
     _ = c.vkEnumerateInstanceExtensionProperties(null, &supported_extension_count, null);
-    var supported_extensions = allocator.alloc(c.VkExtensionProperties, supported_extension_count) catch fatalQuiet();
+    const supported_extensions = allocator.alloc(c.VkExtensionProperties, supported_extension_count) catch fatalQuiet();
     defer allocator.free(supported_extensions);
     _ = c.vkEnumerateInstanceExtensionProperties(null, &supported_extension_count, supported_extensions.ptr);
-    supported_extensions.len = supported_extension_count;
     for (glfw_extensions_slice) |glfw_x| {
         const len = std.mem.len(glfw_x);
         var found = false;
@@ -91,10 +90,9 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
         // checkValidationLayerSupport
         var supported_layer_count: u32 = 0;
         _ = c.vkEnumerateInstanceLayerProperties(&supported_layer_count, null);
-        var supported_layers = allocator.alloc(c.VkLayerProperties, supported_layer_count) catch fatalQuiet();
+        const supported_layers = allocator.alloc(c.VkLayerProperties, supported_layer_count) catch fatalQuiet();
         defer allocator.free(supported_layers);
         _ = c.vkEnumerateInstanceLayerProperties(&supported_layer_count, supported_layers.ptr);
-        supported_layers.len = supported_layer_count;
         for (VALIDATION_LAYERS) |v| {
             std.debug.print("{s} required ... ", .{v});
             var found = false;
@@ -137,13 +135,18 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.Vk
         fatal("Failed to find any GPUs with Vulkan support");
     }
 
-    var devices = allocator.alloc(c.VkPhysicalDevice, device_count) catch fatalQuiet();
+    const devices = allocator.alloc(c.VkPhysicalDevice, device_count) catch fatalQuiet();
     defer allocator.free(devices);
     _ = c.vkEnumeratePhysicalDevices(instance, &device_count, devices.ptr);
-    devices.len = device_count;
 
     // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
-    return devices[0];
+    for (devices) |d| {
+        const indices = findQueueFamilies(allocator, d);
+        if (indices.graphics_family != null) {
+            return d;
+        }
+    }
+    fatal("Failed to find suitable physical GPU");
 }
 
 fn fatal(comptime mess: []const u8) noreturn {
@@ -153,4 +156,28 @@ fn fatal(comptime mess: []const u8) noreturn {
 
 fn fatalQuiet() noreturn {
     fatal("");
+}
+
+const QueueFamilyIndices = struct {
+    graphics_family: ?u32,
+};
+
+fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice) QueueFamilyIndices {
+    var indices = QueueFamilyIndices{
+        .graphics_family = null,
+    };
+
+    var queue_family_count: u32 = 0;
+    c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
+    const queue_families = allocator.alloc(c.VkQueueFamilyProperties, queue_family_count) catch fatalQuiet();
+    defer allocator.free(queue_families);
+    c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
+
+    for (queue_families, 0..) |qf, i| {
+        std.debug.print("{}. {b}\n", .{ i, qf.queueFlags });
+        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+            indices.graphics_family = @intCast(i);
+        }
+    }
+    return indices;
 }
