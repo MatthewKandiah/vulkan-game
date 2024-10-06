@@ -11,6 +11,7 @@ const HEIGHT = 600;
 
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     const window = initWindow();
