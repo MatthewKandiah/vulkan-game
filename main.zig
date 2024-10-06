@@ -6,6 +6,12 @@ const c = @cImport({
     @cInclude("GLFW/glfw3.h");
 });
 
+const DEBUG = std.debug.runtime_safety;
+
+const VALIDATION_LAYERS = [_][]const u8{
+    "VK_LAYER_KHRONOS_validation",
+};
+
 const WIDTH = 800;
 const HEIGHT = 600;
 
@@ -56,13 +62,13 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
     const glfw_extensions = c.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
     const glfw_extensions_slice = glfw_extensions[0..glfw_extension_count];
 
+    // checkExtensionsSupport
     var supported_extension_count: u32 = 0;
     _ = c.vkEnumerateInstanceExtensionProperties(null, &supported_extension_count, null);
     var supported_extensions = allocator.alloc(c.VkExtensionProperties, supported_extension_count) catch fatalQuiet();
     defer allocator.free(supported_extensions);
     _ = c.vkEnumerateInstanceExtensionProperties(null, &supported_extension_count, supported_extensions.ptr);
     supported_extensions.len = supported_extension_count;
-
     for (glfw_extensions_slice) |glfw_x| {
         const len = std.mem.len(glfw_x);
         var found = false;
@@ -79,12 +85,37 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
         }
     }
 
+    if (DEBUG) {
+        // checkValidationLayerSupport
+        var supported_layer_count: u32 = 0;
+        _ = c.vkEnumerateInstanceLayerProperties(&supported_layer_count, null);
+        var supported_layers = allocator.alloc(c.VkLayerProperties, supported_layer_count) catch fatalQuiet();
+        defer allocator.free(supported_layers);
+        _ = c.vkEnumerateInstanceLayerProperties(&supported_layer_count, supported_layers.ptr);
+        supported_layers.len = supported_layer_count;
+        for (VALIDATION_LAYERS) |v| {
+            std.debug.print("{s} required ... ", .{v});
+            var found = false;
+            for (supported_layers) |s| {
+                if (std.mem.eql(u8, v, s.layerName[0..v.len])) {
+                    std.debug.print("supported\n", .{});
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                fatal("Unsupported validation layers required");
+            }
+        }
+    }
+
     const create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &app_info,
         .enabledExtensionCount = glfw_extension_count,
         .ppEnabledExtensionNames = glfw_extensions,
-        .enabledLayerCount = 0,
+        .enabledLayerCount = if (DEBUG) VALIDATION_LAYERS.len else 0,
+        .ppEnabledLayerNames = if (DEBUG) @ptrCast(&VALIDATION_LAYERS) else null,
     };
 
     var result: c.VkInstance = undefined;
