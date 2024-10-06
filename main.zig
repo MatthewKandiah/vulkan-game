@@ -22,6 +22,8 @@ pub fn main() void {
 
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
+    const physical_device = pickPhysicalDevice(allocator, vulkan_instance);
+    _ = physical_device;
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -125,6 +127,23 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
         fatal("Vulkan instance creation failed");
     }
     return result;
+}
+
+fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance) c.VkPhysicalDevice {
+    var device_count: u32 = 0;
+    _ = c.vkEnumeratePhysicalDevices(instance, &device_count, null);
+
+    if (device_count == 0) {
+        fatal("Failed to find any GPUs with Vulkan support");
+    }
+
+    var devices = allocator.alloc(c.VkPhysicalDevice, device_count) catch fatalQuiet();
+    defer allocator.free(devices);
+    _ = c.vkEnumeratePhysicalDevices(instance, &device_count, devices.ptr);
+    devices.len = device_count;
+
+    // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
+    return devices[0];
 }
 
 fn fatal(comptime mess: []const u8) noreturn {
