@@ -12,6 +12,10 @@ const VALIDATION_LAYERS = [_][]const u8{
     "VK_LAYER_KHRONOS_validation",
 };
 
+const DEVICE_EXTENSIONS = [_][]const u8{
+    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
 const WIDTH = 800;
 const HEIGHT = 600;
 
@@ -160,12 +164,39 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
     // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
     for (devices) |d| {
         // isDeviceSuitable
+        const extensions_supported = checkDeviceExtensionSupport(allocator, d);
         const indices = findQueueFamilies(allocator, d, surface);
-        if (indices.isComplete()) {
+        if (indices.isComplete() and extensions_supported) {
             return d;
         }
     }
     fatal("Failed to find suitable physical GPU");
+}
+
+fn checkDeviceExtensionSupport(allocator: std.mem.Allocator, device: c.VkPhysicalDevice) bool {
+    var extension_count: u32 = undefined;
+    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
+
+    const available_extensions = allocator.alloc(c.VkExtensionProperties, extension_count) catch fatalQuiet();
+    defer allocator.free(available_extensions);
+    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, available_extensions.ptr);
+
+    var all_found = true;
+    for (DEVICE_EXTENSIONS) |required_extension| {
+        var found = false;
+        for (available_extensions) |available_extension| {
+            const len = required_extension.len;
+            if (std.mem.eql(u8, required_extension, available_extension.extensionName[0..len])) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            all_found = false;
+            break;
+        }
+    }
+    return all_found;
 }
 
 fn createLogicalDevice(physical_device: c.VkPhysicalDevice, family_indices: QueueFamilyIndices) c.VkDevice {
