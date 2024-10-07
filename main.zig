@@ -159,6 +159,7 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
 
     // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
     for (devices) |d| {
+        // isDeviceSuitable
         const indices = findQueueFamilies(allocator, d, surface);
         if (indices.isComplete()) {
             return d;
