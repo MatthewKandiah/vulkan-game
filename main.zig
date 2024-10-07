@@ -222,7 +222,8 @@ fn createLogicalDevice(physical_device: c.VkPhysicalDevice, family_indices: Queu
         .pQueueCreateInfos = &queue_create_infos,
         .queueCreateInfoCount = queue_create_infos.len,
         .pEnabledFeatures = &device_features,
-        .enabledExtensionCount = 0,
+        .enabledExtensionCount = DEVICE_EXTENSIONS.len,
+        .ppEnabledExtensionNames = @ptrCast(&DEVICE_EXTENSIONS),
         .enabledLayerCount = 0,
     };
     var device: c.VkDevice = undefined;
