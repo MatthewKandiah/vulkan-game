@@ -28,6 +28,8 @@ pub fn main() void {
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
+    var present_queue: c.VkQueue = undefined;
+    c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -166,17 +168,27 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
 }
 
 fn createLogicalDevice(physical_device: c.VkPhysicalDevice, family_indices: QueueFamilyIndices) c.VkDevice {
-    const queue_create_info = c.VkDeviceQueueCreateInfo{
+    const graphics_queue_create_info = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = family_indices.graphics_family.?,
         .queueCount = 1,
         .pQueuePriorities = &[_]f32{1},
     };
+    const present_queue_create_info = c.VkDeviceQueueCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = family_indices.present_family.?,
+        .queueCount = 1,
+        .pQueuePriorities = &[_]f32{1},
+    };
+    const queue_create_infos = [_]c.VkDeviceQueueCreateInfo{
+        graphics_queue_create_info,
+        present_queue_create_info,
+    };
     const device_features = std.mem.zeroes(c.VkPhysicalDeviceFeatures);
     const create_info = c.VkDeviceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pQueueCreateInfos = &queue_create_info,
-        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &queue_create_infos,
+        .queueCreateInfoCount = queue_create_infos.len,
         .pEnabledFeatures = &device_features,
         .enabledExtensionCount = 0,
         .enabledLayerCount = 0,
