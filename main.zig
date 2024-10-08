@@ -38,7 +38,6 @@ pub fn main() void {
         physical_device,
         logical_device,
     );
-    _ = swap_chain;
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -51,6 +50,7 @@ pub fn main() void {
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
     c.vkDestroyDevice(logical_device, null);
     c.vkDestroySurfaceKHR(vulkan_instance, surface, null);
     c.vkDestroyInstance(vulkan_instance, null);
