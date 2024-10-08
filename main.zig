@@ -30,59 +30,15 @@ pub fn main() void {
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
-
-    // createSwapChain
-    var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
-    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swap_chain_capabilities);
-    var swap_chain_surface_format_count: u32 = undefined;
-    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, null);
-    const swap_chain_surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, swap_chain_surface_format_count) catch fatalQuiet();
-    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, swap_chain_surface_formats.ptr);
-    var swap_chain_present_mode_count: u32 = undefined;
-    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, null);
-    const swap_chain_present_modes = allocator.alloc(c.VkPresentModeKHR, swap_chain_present_mode_count) catch fatalQuiet();
-    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, swap_chain_present_modes.ptr);
-
-    const swap_chain_surface_format = chooseSwapSurfaceFormat(swap_chain_surface_formats);
-    const swap_chain_present_mode = chooseSwapPresentMode(swap_chain_present_modes);
-    const swap_chain_extent = chooseSwapExtent(window, swap_chain_capabilities);
-    allocator.free(swap_chain_surface_formats);
-    allocator.free(swap_chain_present_modes);
-    var swap_chain_image_count: u32 = swap_chain_capabilities.minImageCount + 1;
-    if (swap_chain_capabilities.maxImageCount > 0 and swap_chain_image_count > swap_chain_capabilities.maxImageCount) {
-        swap_chain_image_count = swap_chain_capabilities.maxImageCount;
-    }
-
-    var create_swap_chain_info = std.mem.zeroes(c.VkSwapchainCreateInfoKHR);
-    create_swap_chain_info.sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    create_swap_chain_info.surface = surface;
-    create_swap_chain_info.minImageCount = swap_chain_image_count;
-    create_swap_chain_info.imageFormat = swap_chain_surface_format.format;
-    create_swap_chain_info.imageColorSpace = swap_chain_surface_format.colorSpace;
-    create_swap_chain_info.imageExtent = swap_chain_extent;
-    create_swap_chain_info.imageArrayLayers = 1;
-    // NOTE - this imageUsage is used to render an image directly to the screen
-    //        if you want to perform post-processing you will want to render to another image first
-    //        in that case consider using c.VK_IMAGE_USAGE_TRANSFER_DST_BIT and a memory operation
-    //        to transfer the rendered image to a swap chain image
-    create_swap_chain_info.imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if (queue_family_indices.graphics_family != queue_family_indices.present_family) {
-        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
-        create_swap_chain_info.queueFamilyIndexCount = 2;
-        create_swap_chain_info.pQueueFamilyIndices = &[2]u32{ queue_family_indices.graphics_family.?, queue_family_indices.present_family.? };
-    } else {
-        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
-        create_swap_chain_info.queueFamilyIndexCount = 0;
-        create_swap_chain_info.pQueueFamilyIndices = null;
-    }
-    create_swap_chain_info.preTransform = swap_chain_capabilities.currentTransform;
-    create_swap_chain_info.compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    create_swap_chain_info.presentMode = swap_chain_present_mode;
-    create_swap_chain_info.clipped = c.VK_TRUE;
-    create_swap_chain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
-    var swap_chain: c.VkSwapchainKHR = undefined;
-    // TODO - fatal on error
-    _ = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
+    const swap_chain = createSwapChain(
+        allocator,
+        surface,
+        window,
+        queue_family_indices,
+        physical_device,
+        logical_device,
+    );
+    _ = swap_chain;
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -386,4 +342,66 @@ fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice, s
         }
     }
     return indices;
+}
+
+fn createSwapChain(
+    allocator: std.mem.Allocator,
+    surface: c.VkSurfaceKHR,
+    window: *c.GLFWwindow,
+    queue_family_indices: QueueFamilyIndices,
+    physical_device: c.VkPhysicalDevice,
+    logical_device: c.VkDevice,
+) c.VkSwapchainKHR {
+    var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swap_chain_capabilities);
+    var swap_chain_surface_format_count: u32 = undefined;
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, null);
+    const swap_chain_surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, swap_chain_surface_format_count) catch fatalQuiet();
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, swap_chain_surface_formats.ptr);
+    var swap_chain_present_mode_count: u32 = undefined;
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, null);
+    const swap_chain_present_modes = allocator.alloc(c.VkPresentModeKHR, swap_chain_present_mode_count) catch fatalQuiet();
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, swap_chain_present_modes.ptr);
+
+    const swap_chain_surface_format = chooseSwapSurfaceFormat(swap_chain_surface_formats);
+    const swap_chain_present_mode = chooseSwapPresentMode(swap_chain_present_modes);
+    const swap_chain_extent = chooseSwapExtent(window, swap_chain_capabilities);
+    allocator.free(swap_chain_surface_formats);
+    allocator.free(swap_chain_present_modes);
+    var swap_chain_image_count: u32 = swap_chain_capabilities.minImageCount + 1;
+    if (swap_chain_capabilities.maxImageCount > 0 and swap_chain_image_count > swap_chain_capabilities.maxImageCount) {
+        swap_chain_image_count = swap_chain_capabilities.maxImageCount;
+    }
+
+    var create_swap_chain_info = std.mem.zeroes(c.VkSwapchainCreateInfoKHR);
+    create_swap_chain_info.sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_swap_chain_info.surface = surface;
+    create_swap_chain_info.minImageCount = swap_chain_image_count;
+    create_swap_chain_info.imageFormat = swap_chain_surface_format.format;
+    create_swap_chain_info.imageColorSpace = swap_chain_surface_format.colorSpace;
+    create_swap_chain_info.imageExtent = swap_chain_extent;
+    create_swap_chain_info.imageArrayLayers = 1;
+    // NOTE - this imageUsage is used to render an image directly to the screen
+    //        if you want to perform post-processing you will want to render to another image first
+    //        in that case consider using c.VK_IMAGE_USAGE_TRANSFER_DST_BIT and a memory operation
+    //        to transfer the rendered image to a swap chain image
+    create_swap_chain_info.imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (queue_family_indices.graphics_family != queue_family_indices.present_family) {
+        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
+        create_swap_chain_info.queueFamilyIndexCount = 2;
+        create_swap_chain_info.pQueueFamilyIndices = &[2]u32{ queue_family_indices.graphics_family.?, queue_family_indices.present_family.? };
+    } else {
+        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
+        create_swap_chain_info.queueFamilyIndexCount = 0;
+        create_swap_chain_info.pQueueFamilyIndices = null;
+    }
+    create_swap_chain_info.preTransform = swap_chain_capabilities.currentTransform;
+    create_swap_chain_info.compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_swap_chain_info.presentMode = swap_chain_present_mode;
+    create_swap_chain_info.clipped = c.VK_TRUE;
+    create_swap_chain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
+    var swap_chain: c.VkSwapchainKHR = undefined;
+    // TODO - fatal on error
+    _ = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
+    return swap_chain;
 }
