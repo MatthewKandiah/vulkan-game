@@ -27,9 +27,56 @@ pub fn main() void {
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
     const surface = createSurface(vulkan_instance, window);
-    const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface, window);
+    const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
+
+    // createSwapChain
+    var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swap_chain_capabilities);
+    var swap_chain_surface_format_count: u32 = undefined;
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, null);
+    const swap_chain_surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, swap_chain_surface_format_count) catch fatalQuiet();
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, swap_chain_surface_formats.ptr);
+    var swap_chain_present_mode_count: u32 = undefined;
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, null);
+    const swap_chain_present_modes = allocator.alloc(c.VkPresentModeKHR, swap_chain_present_mode_count) catch fatalQuiet();
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, swap_chain_present_modes.ptr);
+
+    const swap_chain_surface_format = chooseSwapSurfaceFormat(swap_chain_surface_formats);
+    const swap_chain_present_mode = chooseSwapPresentMode(swap_chain_present_modes);
+    _ = swap_chain_present_mode;
+    const swap_chain_extent = chooseSwapExtent(window, swap_chain_capabilities);
+    allocator.free(swap_chain_surface_formats);
+    allocator.free(swap_chain_present_modes);
+    var swap_chain_image_count: u32 = swap_chain_capabilities.minImageCount + 1;
+    if (swap_chain_capabilities.maxImageCount > 0 and swap_chain_image_count > swap_chain_capabilities.maxImageCount) {
+        swap_chain_image_count = swap_chain_capabilities.maxImageCount;
+    }
+
+    var create_swap_chain_info = std.mem.zeroes(c.VkSwapchainCreateInfoKHR);
+    create_swap_chain_info.sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_swap_chain_info.surface = surface;
+    create_swap_chain_info.minImageCount = swap_chain_image_count;
+    create_swap_chain_info.imageFormat = swap_chain_surface_format.format;
+    create_swap_chain_info.imageColorSpace = swap_chain_surface_format.colorSpace;
+    create_swap_chain_info.imageExtent = swap_chain_extent;
+    create_swap_chain_info.imageArrayLayers = 1;
+    // NOTE - this imageUsage is used to render an image directly to the screen
+    //        if you want to perform post-processing you will want to render to another image first
+    //        in that case consider using c.VK_IMAGE_USAGE_TRANSFER_DST_BIT and a memory operation
+    //        to transfer the rendered image to a swap chain image
+    create_swap_chain_info.imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (queue_family_indices.graphics_family != queue_family_indices.present_family) {
+        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
+        create_swap_chain_info.queueFamilyIndexCount = 2;
+        create_swap_chain_info.pQueueFamilyIndices = &[2]u32{ queue_family_indices.graphics_family.?, queue_family_indices.present_family.? };
+    } else {
+        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
+        create_swap_chain_info.queueFamilyIndexCount = 0;
+        create_swap_chain_info.pQueueFamilyIndices = null;
+    }
+
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
     var present_queue: c.VkQueue = undefined;
@@ -149,7 +196,7 @@ fn createSurface(instance: c.VkInstance, window: *c.GLFWwindow) c.VkSurfaceKHR {
     return surface;
 }
 
-fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surface: c.VkSurfaceKHR, window: *c.GLFWwindow) c.VkPhysicalDevice {
+fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surface: c.VkSurfaceKHR) c.VkPhysicalDevice {
     var device_count: u32 = 0;
     _ = c.vkEnumeratePhysicalDevices(instance, &device_count, null);
 
@@ -174,23 +221,10 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
             var surface_format_count: u32 = undefined;
             _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null);
             if (surface_format_count == 0) continue;
-            const surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, surface_format_count) catch fatalQuiet();
-            defer allocator.free(surface_formats);
-            _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, surface_formats.ptr);
 
             var present_mode_count: u32 = undefined;
             _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
             if (present_mode_count == 0) continue;
-            const present_modes = allocator.alloc(c.VkPresentModeKHR, present_mode_count) catch fatalQuiet();
-            defer allocator.free(present_modes);
-            _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, present_modes.ptr);
-
-            const surface_format = chooseSwapSurfaceFormat(surface_formats);
-            const present_mode = chooseSwapPresentMode(present_modes);
-            const swap_extent = chooseSwapExtent(window, swap_chain_capabilities);
-            _ = surface_format;
-            _ = present_mode;
-            _ = swap_extent;
 
             return device;
         }
@@ -319,6 +353,8 @@ const QueueFamilyIndices = struct {
     }
 };
 
+// TODO - I've done this lazily and just picked whatever works
+//        Would be better to preferentially pick a single index that can handle both families
 fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) QueueFamilyIndices {
     var indices = QueueFamilyIndices{
         .graphics_family = null,
