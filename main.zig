@@ -45,7 +45,6 @@ pub fn main() void {
 
     const swap_chain_surface_format = chooseSwapSurfaceFormat(swap_chain_surface_formats);
     const swap_chain_present_mode = chooseSwapPresentMode(swap_chain_present_modes);
-    _ = swap_chain_present_mode;
     const swap_chain_extent = chooseSwapExtent(window, swap_chain_capabilities);
     allocator.free(swap_chain_surface_formats);
     allocator.free(swap_chain_present_modes);
@@ -76,6 +75,14 @@ pub fn main() void {
         create_swap_chain_info.queueFamilyIndexCount = 0;
         create_swap_chain_info.pQueueFamilyIndices = null;
     }
+    create_swap_chain_info.preTransform = swap_chain_capabilities.currentTransform;
+    create_swap_chain_info.compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_swap_chain_info.presentMode = swap_chain_present_mode;
+    create_swap_chain_info.clipped = c.VK_TRUE;
+    create_swap_chain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
+    var swap_chain: c.VkSwapchainKHR = undefined;
+    // TODO - fatal on error
+    _ = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
