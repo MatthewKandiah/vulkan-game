@@ -38,17 +38,44 @@ pub fn main() void {
         physical_device,
         logical_device,
     );
-    const swap_chain = create_swap_chain_res.swap_chain;
+    const swap_chain = create_swap_chain_res.swap_chain.?;
     const swap_chain_image_format = create_swap_chain_res.format;
     const swap_chain_extent = create_swap_chain_res.extent;
-    _ = swap_chain_image_format;
     _ = swap_chain_extent;
 
     var swap_chain_image_count: u32 = undefined;
     _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, null);
     const swap_chain_images = allocator.alloc(c.VkImage, swap_chain_image_count) catch fatalQuiet();
-    defer allocator.free(swap_chain_images);
     _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, swap_chain_images.ptr);
+
+    const swap_chain_image_views = allocator.alloc(c.VkImageView, swap_chain_image_count) catch fatalQuiet();
+    defer allocator.free(swap_chain_image_views);
+    defer allocator.free(swap_chain_images);
+    for (swap_chain_images, 0..) |image, i| {
+        var image_view_create_info = std.mem.zeroes(c.VkImageViewCreateInfo);
+        image_view_create_info.sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        image_view_create_info.image = image;
+        image_view_create_info.viewType = c.VK_IMAGE_VIEW_TYPE_2D;
+        image_view_create_info.format = swap_chain_image_format;
+        image_view_create_info.components = .{
+            .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+        };
+        image_view_create_info.subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+        const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swap_chain_image_views[i]);
+        if (image_view_create_res != c.VK_SUCCESS) {
+            std.debug.print("i: {}, image_view_create_res: {}\n", .{ i, image_view_create_res });
+            fatal("Failed to create image view");
+        }
+    }
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -62,6 +89,9 @@ pub fn main() void {
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
     c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
+    for (swap_chain_image_views) |image_view| {
+        c.vkDestroyImageView(logical_device, image_view, null);
+    }
     c.vkDestroyDevice(logical_device, null);
     c.vkDestroySurfaceKHR(vulkan_instance, surface, null);
     c.vkDestroyInstance(vulkan_instance, null);
