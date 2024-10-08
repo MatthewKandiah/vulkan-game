@@ -27,7 +27,7 @@ pub fn main() void {
     const window = initWindow();
     const vulkan_instance = initVulkan(allocator);
     const surface = createSurface(vulkan_instance, window);
-    const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
+    const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface, window);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
     var graphics_queue: c.VkQueue = undefined;
@@ -149,7 +149,7 @@ fn createSurface(instance: c.VkInstance, window: *c.GLFWwindow) c.VkSurfaceKHR {
     return surface;
 }
 
-fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surface: c.VkSurfaceKHR) c.VkPhysicalDevice {
+fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surface: c.VkSurfaceKHR, window: *c.GLFWwindow) c.VkPhysicalDevice {
     var device_count: u32 = 0;
     _ = c.vkEnumeratePhysicalDevices(instance, &device_count, null);
 
@@ -174,9 +174,9 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
             var surface_format_count: u32 = undefined;
             _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null);
             if (surface_format_count == 0) continue;
-            const formats = allocator.alloc(c.VkSurfaceFormatKHR, surface_format_count) catch fatalQuiet();
-            defer allocator.free(formats);
-            _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, formats.ptr);
+            const surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, surface_format_count) catch fatalQuiet();
+            defer allocator.free(surface_formats);
+            _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, surface_formats.ptr);
 
             var present_mode_count: u32 = undefined;
             _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
@@ -185,10 +185,56 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
             defer allocator.free(present_modes);
             _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, present_modes.ptr);
 
+            const surface_format = chooseSwapSurfaceFormat(surface_formats);
+            const present_mode = chooseSwapPresentMode(present_modes);
+            const swap_extent = chooseSwapExtent(window, swap_chain_capabilities);
+            _ = surface_format;
+            _ = present_mode;
+            _ = swap_extent;
+
             return device;
         }
     }
     fatal("Failed to find suitable physical GPU");
+}
+
+fn chooseSwapExtent(window: *c.GLFWwindow, capabilities: c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
+    if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
+        return capabilities.currentExtent;
+    }
+    var width: i32 = undefined;
+    var height: i32 = undefined;
+    c.glfwGetFramebufferSize(window, &width, &height);
+    return c.VkExtent2D{
+        .width = std.math.clamp(
+            @as(u32, @intCast(width)),
+            capabilities.minImageExtent.width,
+            capabilities.maxImageExtent.width,
+        ),
+        .height = std.math.clamp(
+            @as(u32, @intCast(height)),
+            capabilities.minImageExtent.height,
+            capabilities.maxImageExtent.height,
+        ),
+    };
+}
+
+fn chooseSwapPresentMode(available_present_modes: []c.VkPresentModeKHR) c.VkPresentModeKHR {
+    for (available_present_modes) |available_mode| {
+        if (available_mode == c.VK_PRESENT_MODE_MAILBOX_KHR) {
+            return available_mode;
+        }
+    }
+    return c.VK_PRESENT_MODE_FIFO_KHR;
+}
+
+fn chooseSwapSurfaceFormat(available_formats: []c.VkSurfaceFormatKHR) c.VkSurfaceFormatKHR {
+    for (available_formats) |available_format| {
+        if (available_format.format == c.VK_FORMAT_B8G8R8A8_SRGB and available_format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return available_format;
+        }
+    }
+    return available_formats[0];
 }
 
 fn checkDeviceExtensionSupport(allocator: std.mem.Allocator, device: c.VkPhysicalDevice) bool {
