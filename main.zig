@@ -162,12 +162,30 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
     _ = c.vkEnumeratePhysicalDevices(instance, &device_count, devices.ptr);
 
     // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
-    for (devices) |d| {
+    for (devices) |device| {
         // isDeviceSuitable
-        const extensions_supported = checkDeviceExtensionSupport(allocator, d);
-        const indices = findQueueFamilies(allocator, d, surface);
+        const extensions_supported = checkDeviceExtensionSupport(allocator, device);
+        const indices = findQueueFamilies(allocator, device, surface);
         if (indices.isComplete() and extensions_supported) {
-            return d;
+            // querySwapChainSupport
+            var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+            _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &swap_chain_capabilities);
+
+            var surface_format_count: u32 = undefined;
+            _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null);
+            if (surface_format_count == 0) continue;
+            const formats = allocator.alloc(c.VkSurfaceFormatKHR, surface_format_count) catch fatalQuiet();
+            defer allocator.free(formats);
+            _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, formats.ptr);
+
+            var present_mode_count: u32 = undefined;
+            _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
+            if (present_mode_count == 0) continue;
+            const present_modes = allocator.alloc(c.VkPresentModeKHR, present_mode_count) catch fatalQuiet();
+            defer allocator.free(present_modes);
+            _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, present_modes.ptr);
+
+            return device;
         }
     }
     fatal("Failed to find suitable physical GPU");
