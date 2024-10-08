@@ -30,7 +30,7 @@ pub fn main() void {
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
-    const swap_chain = createSwapChain(
+    const create_swap_chain_res = createSwapChain(
         allocator,
         surface,
         window,
@@ -38,6 +38,17 @@ pub fn main() void {
         physical_device,
         logical_device,
     );
+    const swap_chain = create_swap_chain_res.swap_chain;
+    const swap_chain_image_format = create_swap_chain_res.format;
+    const swap_chain_extent = create_swap_chain_res.extent;
+    _ = swap_chain_image_format;
+    _ = swap_chain_extent;
+
+    var swap_chain_image_count: u32 = undefined;
+    _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, null);
+    const swap_chain_images = allocator.alloc(c.VkImage, swap_chain_image_count) catch fatalQuiet();
+    defer allocator.free(swap_chain_images);
+    _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, swap_chain_images.ptr);
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -344,6 +355,12 @@ fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice, s
     return indices;
 }
 
+const CreateSwapChainResult = struct {
+    swap_chain: c.VkSwapchainKHR,
+    format: c.VkFormat,
+    extent: c.VkExtent2D,
+};
+
 fn createSwapChain(
     allocator: std.mem.Allocator,
     surface: c.VkSurfaceKHR,
@@ -351,7 +368,7 @@ fn createSwapChain(
     queue_family_indices: QueueFamilyIndices,
     physical_device: c.VkPhysicalDevice,
     logical_device: c.VkDevice,
-) c.VkSwapchainKHR {
+) CreateSwapChainResult {
     var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
     _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swap_chain_capabilities);
     var swap_chain_surface_format_count: u32 = undefined;
@@ -406,5 +423,9 @@ fn createSwapChain(
         std.debug.print("create_swap_chain_res: {}\n", .{create_swap_chain_res});
         fatal("Failed to create swap chain");
     }
-    return swap_chain;
+    return CreateSwapChainResult{
+        .swap_chain = swap_chain,
+        .extent = swap_chain_extent,
+        .format = swap_chain_surface_format.format,
+    };
 }
