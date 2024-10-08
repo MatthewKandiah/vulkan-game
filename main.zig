@@ -401,7 +401,10 @@ fn createSwapChain(
     create_swap_chain_info.clipped = c.VK_TRUE;
     create_swap_chain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
     var swap_chain: c.VkSwapchainKHR = undefined;
-    // TODO - fatal on error
-    _ = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
+    const create_swap_chain_res = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
+    if (create_swap_chain_res != c.VK_SUCCESS) {
+        std.debug.print("create_swap_chain_res: {}\n", .{create_swap_chain_res});
+        fatal("Failed to create swap chain");
+    }
     return swap_chain;
 }
