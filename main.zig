@@ -19,6 +19,9 @@ const DEVICE_EXTENSIONS = [_][]const u8{
 const WIDTH = 800;
 const HEIGHT = 600;
 
+const VERT_SHADER = @embedFile("shaders-out/vert.spv");
+const FRAG_SHADER = @embedFile("shaders-out/frag.spv");
+
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -81,6 +84,8 @@ pub fn main() void {
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
     var present_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
+
+    createGraphicsPipeline();
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -458,4 +463,26 @@ fn createSwapChain(
         .extent = swap_chain_extent,
         .format = swap_chain_surface_format.format,
     };
+}
+
+fn createGraphicsPipeline() void {
+    var vert_shader_data: [VERT_SHADER.len / 4]u32 = undefined;
+    // presumably this is system dependent and will break on lots of other machines, but I think this is working on mine
+    // TODO - system agnostic way of reading this in...
+    for (0..VERT_SHADER.len / 4) |i| {
+        const buf1 = [2]u8{ VERT_SHADER[4 * i], VERT_SHADER[4 * i + 1] };
+        const num1 = std.mem.readInt(u16, &buf1, .little);
+        const more_sig_bits1: u8 = @intCast(num1 >> 8);
+        const less_sig_bits1: u8 = @truncate(num1);
+
+        const buf2 = [2]u8{ VERT_SHADER[4 * i + 2], VERT_SHADER[4 * i + 3] };
+        const num2 = std.mem.readInt(u16, &buf2, .little);
+        const more_sig_bits2: u8 = @intCast(num2 >> 8);
+        const less_sig_bits2: u8 = @truncate(num2);
+
+        const buf3 = [4]u8{ more_sig_bits1, less_sig_bits1, more_sig_bits2, less_sig_bits2 };
+        const result: u32 = std.mem.readInt(u32, &buf3, .big);
+        if (i < 10) std.debug.print("{x:0>8}\n", .{result});
+    }
+    vert_shader_data[0] = 111;
 }
