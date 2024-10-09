@@ -85,7 +85,7 @@ pub fn main() void {
     var present_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
 
-    createGraphicsPipeline();
+    createGraphicsPipeline(logical_device);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -465,7 +465,7 @@ fn createSwapChain(
     };
 }
 
-fn createGraphicsPipeline() void {
+fn createGraphicsPipeline(logical_device: c.VkDevice) void {
     var vert_shader_data: [VERT_SHADER.len / 4]u32 = undefined;
     // presumably this is system dependent and will break on lots of other machines, but I think this is working on mine
     // TODO - system agnostic way of reading this in...
@@ -482,7 +482,19 @@ fn createGraphicsPipeline() void {
 
         const buf3 = [4]u8{ more_sig_bits1, less_sig_bits1, more_sig_bits2, less_sig_bits2 };
         const result: u32 = std.mem.readInt(u32, &buf3, .big);
-        if (i < 10) std.debug.print("{x:0>8}\n", .{result});
+        vert_shader_data[i] = result;
     }
-    vert_shader_data[0] = 111;
+    const vert_shader_module_create_info = c.VkShaderModuleCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = VERT_SHADER.len, // must be given in bytes
+        .pCode = &vert_shader_data, // must be pointer to u32
+        .pNext = null,
+        .flags = 0,
+    };
+    var vert_shader_module: c.VkShaderModule = undefined;
+    const create_vert_shader_module_res = c.vkCreateShaderModule(logical_device, &vert_shader_module_create_info, null, &vert_shader_module);
+    if (create_vert_shader_module_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{create_vert_shader_module_res});
+        fatal("Failed to create vertex shader module");
+    }
 }
