@@ -484,10 +484,17 @@ fn createGraphicsPipeline(logical_device: c.VkDevice) void {
         const result: u32 = std.mem.readInt(u32, &buf3, .big);
         vert_shader_data[i] = result;
     }
+    // const vert_shader_module_create_info = c.VkShaderModuleCreateInfo{
+    //     .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+    //     .codeSize = VERT_SHADER.len, // must be given in bytes
+    //     .pCode = &vert_shader_data, // must be pointer to u32
+    //     .pNext = null,
+    //     .flags = 0,
+    // };
     const vert_shader_module_create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = VERT_SHADER.len, // must be given in bytes
-        .pCode = &vert_shader_data, // must be pointer to u32
+        .pCode = @ptrCast(&VERT_SHADER), // must be pointer to u32
         .pNext = null,
         .flags = 0,
     };
