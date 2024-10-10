@@ -86,6 +86,8 @@ pub fn main() void {
     var present_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
 
+    const render_pass = createRenderPass(logical_device, swap_chain_image_format);
+
     // TODO - we're going to need to pass out the graphics pipeline too, need to either split into `createPipelineLayout` and `createGraphicsPipeline` or return a struct with both values
     const pipeline_layout = createGraphicsPipeline(logical_device, swap_chain_extent);
 
@@ -96,6 +98,7 @@ pub fn main() void {
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
     c.vkDestroyPipelineLayout(logical_device, pipeline_layout, null);
+    c.vkDestroyRenderPass(logical_device, render_pass, null);
     c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
     for (swap_chain_image_views) |image_view| {
         c.vkDestroyImageView(logical_device, image_view, null);
@@ -466,6 +469,45 @@ fn createSwapChain(
         .extent = swap_chain_extent,
         .format = swap_chain_surface_format.format,
     };
+}
+
+fn createRenderPass(logical_device: c.VkDevice, image_format: c.VkFormat) c.VkRenderPass {
+    const color_attachment = c.VkAttachmentDescription{
+        .format = image_format,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+    };
+
+    const color_attachment_ref = c.VkAttachmentReference{
+        .attachment = 0,
+        .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+
+    const subpass = c.VkSubpassDescription{
+        .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment_ref,
+    };
+
+    var render_pass: c.VkRenderPass = undefined;
+    const render_pass_create_info = c.VkRenderPassCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments = &color_attachment,
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+    };
+    const render_pass_create_res = c.vkCreateRenderPass(logical_device, &render_pass_create_info, null, &render_pass);
+    if (render_pass_create_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{render_pass_create_res});
+        fatal("Failed to create render pass");
+    }
+    return render_pass;
 }
 
 fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExtent2D) c.VkPipelineLayout {
