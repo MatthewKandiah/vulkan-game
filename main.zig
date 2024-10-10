@@ -19,8 +19,10 @@ const DEVICE_EXTENSIONS = [_][]const u8{
 const WIDTH = 800;
 const HEIGHT = 600;
 
-const VERT_SHADER = @embedFile("shaders-out/vert.spv");
-const FRAG_SHADER = @embedFile("shaders-out/frag.spv");
+const VERT_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/vert.spv";
+const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/frag.spv";
+const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
+const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -466,42 +468,46 @@ fn createSwapChain(
 }
 
 fn createGraphicsPipeline(logical_device: c.VkDevice) void {
-    var vert_shader_data: [VERT_SHADER.len / 4]u32 = undefined;
-    // presumably this is system dependent and will break on lots of other machines, but I think this is working on mine
-    // TODO - system agnostic way of reading this in...
-    for (0..VERT_SHADER.len / 4) |i| {
-        const buf1 = [2]u8{ VERT_SHADER[4 * i], VERT_SHADER[4 * i + 1] };
-        const num1 = std.mem.readInt(u16, &buf1, .little);
-        const more_sig_bits1: u8 = @intCast(num1 >> 8);
-        const less_sig_bits1: u8 = @truncate(num1);
+    const vert_shader_module = createShaderModule(VERT_SHADER_RAW, logical_device);
+    const frag_shader_module = createShaderModule(FRAG_SHADER_RAW, logical_device);
 
-        const buf2 = [2]u8{ VERT_SHADER[4 * i + 2], VERT_SHADER[4 * i + 3] };
-        const num2 = std.mem.readInt(u16, &buf2, .little);
-        const more_sig_bits2: u8 = @intCast(num2 >> 8);
-        const less_sig_bits2: u8 = @truncate(num2);
+    // TODO - continue Shader State Creation in here
 
-        const buf3 = [4]u8{ more_sig_bits1, less_sig_bits1, more_sig_bits2, less_sig_bits2 };
-        const result: u32 = std.mem.readInt(u32, &buf3, .big);
-        vert_shader_data[i] = result;
+    c.vkDestroyShaderModule(logical_device, vert_shader_module, null);
+    c.vkDestroyShaderModule(logical_device, frag_shader_module, null);
+}
+
+fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
+    // TODO - this smells very system dependent
+    //        presumably there's some way to sniff out the endianess we're going to write the shader to file with
+    //        then we could make this more sane
+    //        alternatively, the glslc people also have a library that let's you compile shaders at runtime
+    //        that might avoid all this
+    var processed_shader: [shader.len / 2]u16 align(4) = undefined;
+    for (0..processed_shader.len) |i| {
+        const buf = [2]u8{
+            shader[2 * i],
+            shader[2 * i + 1],
+        };
+        processed_shader[i] = std.mem.readInt(u16, &buf, .little);
     }
-    // const vert_shader_module_create_info = c.VkShaderModuleCreateInfo{
-    //     .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-    //     .codeSize = VERT_SHADER.len, // must be given in bytes
-    //     .pCode = &vert_shader_data, // must be pointer to u32
-    //     .pNext = null,
-    //     .flags = 0,
-    // };
-    const vert_shader_module_create_info = c.VkShaderModuleCreateInfo{
+    const module_create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = VERT_SHADER.len, // must be given in bytes
-        .pCode = @ptrCast(&VERT_SHADER), // must be pointer to u32
+        .codeSize = processed_shader.len * 2,
+        .pCode = @ptrCast(&processed_shader),
         .pNext = null,
         .flags = 0,
     };
-    var vert_shader_module: c.VkShaderModule = undefined;
-    const create_vert_shader_module_res = c.vkCreateShaderModule(logical_device, &vert_shader_module_create_info, null, &vert_shader_module);
-    if (create_vert_shader_module_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{create_vert_shader_module_res});
-        fatal("Failed to create vertex shader module");
+    var shader_module: c.VkShaderModule = undefined;
+    const module_create_res = c.vkCreateShaderModule(
+        logical_device,
+        &module_create_info,
+        null,
+        &shader_module,
+    );
+    if (module_create_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{module_create_res});
+        fatal("Failed to create shader module");
     }
+    return shader_module;
 }
