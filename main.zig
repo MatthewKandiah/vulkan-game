@@ -46,7 +46,6 @@ pub fn main() void {
     const swap_chain = create_swap_chain_res.swap_chain.?;
     const swap_chain_image_format = create_swap_chain_res.format;
     const swap_chain_extent = create_swap_chain_res.extent;
-    _ = swap_chain_extent;
 
     var swap_chain_image_count: u32 = undefined;
     _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, null);
@@ -87,7 +86,8 @@ pub fn main() void {
     var present_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
 
-    createGraphicsPipeline(logical_device);
+    // TODO - we're going to need to pass out the graphics pipeline too, need to either split into `createPipelineLayout` and `createGraphicsPipeline` or return a struct with both values
+    const pipeline_layout = createGraphicsPipeline(logical_device, swap_chain_extent);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -95,6 +95,7 @@ pub fn main() void {
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroyPipelineLayout(logical_device, pipeline_layout, null);
     c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
     for (swap_chain_image_views) |image_view| {
         c.vkDestroyImageView(logical_device, image_view, null);
@@ -467,7 +468,7 @@ fn createSwapChain(
     };
 }
 
-fn createGraphicsPipeline(logical_device: c.VkDevice) void {
+fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExtent2D) c.VkPipelineLayout {
     const vert_shader_module = createShaderModule(VERT_SHADER_RAW, logical_device);
     const frag_shader_module = createShaderModule(FRAG_SHADER_RAW, logical_device);
 
@@ -491,21 +492,114 @@ fn createGraphicsPipeline(logical_device: c.VkDevice) void {
         .flags = 0,
     };
 
-    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{vert_shader_stage_info, frag_shader_stage_info};
+    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{ vert_shader_stage_info, frag_shader_stage_info };
+    _ = shader_stages;
 
-    const dynamic_states = [_]c.VkDynamicState {c.VK_DYNAMIC_STATE_VIEWPORT, c.VK_DYNAMIC_STATE_SCISSOR};
-    const dynamic_state = c.VkPipelineDynamicStateCreateInfo {
+    const dynamic_states = [_]c.VkDynamicState{ c.VK_DYNAMIC_STATE_VIEWPORT, c.VK_DYNAMIC_STATE_SCISSOR };
+    const dynamic_state = c.VkPipelineDynamicStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = dynamic_states.len,
         .pDynamicStates = &dynamic_states,
         .pNext = null,
         .flags = 0,
     };
+    _ = dynamic_state; // autofix
 
-    // TODO - continue Vertex Input from here
+    // NOTE - we've hardcoded our vertex data, so this will just pass nothing in for now
+    const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = 0,
+        .pVertexBindingDescriptions = null,
+        .vertexAttributeDescriptionCount = 0,
+        .pVertexAttributeDescriptions = null,
+    };
+    _ = vertex_input_info; // autofix
+
+    const input_assembly = c.VkPipelineInputAssemblyStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = c.VK_FALSE,
+        .pNext = null,
+        .flags = 0,
+    };
+    _ = input_assembly; // autofix
+
+    const viewport = c.VkViewport{
+        .x = 0,
+        .y = 0,
+        .width = @floatFromInt(swap_chain_extent.width),
+        .height = @floatFromInt(swap_chain_extent.height),
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
+    _ = viewport; // autofix
+
+    const scissor = c.VkRect2D{
+        .offset = c.VkOffset2D{ .x = 0, .y = 0 },
+        .extent = swap_chain_extent,
+    };
+    _ = scissor; // autofix
+
+    // viewports and scissors don't have to be set here because we're setting them dynamically at drawing time
+    const viewport_state = c.VkPipelineViewportStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount = 1,
+    };
+    _ = viewport_state; // autofix
+
+    const rasterizer = c.VkPipelineRasterizationStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = c.VK_FALSE,
+        .rasterizerDiscardEnable = c.VK_FALSE,
+        .polygonMode = c.VK_POLYGON_MODE_FILL, // change to c.VK_POLYGON_MODE_LINE for wireframe
+        .lineWidth = 1,
+        .cullMode = c.VK_CULL_MODE_BACK_BIT,
+        .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = c.VK_FALSE,
+        .depthBiasConstantFactor = 0,
+        .depthBiasClamp = 0,
+        .depthBiasSlopeFactor = 0,
+    };
+    _ = rasterizer; // autofix
+
+    const multisampling = c.VkPipelineMultisampleStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .sampleShadingEnable = c.VK_FALSE,
+        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
+        .minSampleShading = 1,
+        .pSampleMask = null,
+        .alphaToCoverageEnable = c.VK_FALSE,
+        .alphaToOneEnable = c.VK_FALSE,
+    };
+    _ = multisampling; // autofix
+
+    const color_blend_attachment = c.VkPipelineColorBlendAttachmentState{
+        .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = c.VK_FALSE,
+    };
+
+    const color_blending = c.VkPipelineColorBlendStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = c.VK_FALSE,
+        .attachmentCount = 1,
+        .pAttachments = &color_blend_attachment,
+    };
+    _ = color_blending; // autofix
+
+    var pipeline_layout: c.VkPipelineLayout = undefined;
+    const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    };
+    const pipeline_layout_create_res = c.vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info, null, &pipeline_layout);
+    if (pipeline_layout_create_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{pipeline_layout_create_res});
+        fatal("Failed to create pipeline layout");
+    }
 
     c.vkDestroyShaderModule(logical_device, vert_shader_module, null);
     c.vkDestroyShaderModule(logical_device, frag_shader_module, null);
+    return pipeline_layout;
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
