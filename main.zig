@@ -102,6 +102,12 @@ pub fn main() void {
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
+    const command_buffer = createCommandBuffer(
+        command_pool,
+        logical_device,
+    );
+    _ = command_buffer;
+
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
@@ -726,6 +732,25 @@ fn createCommandPool(queue_family_indices: QueueFamilyIndices, logical_device: c
         fatal("Failed to create command pool");
     }
     return command_pool;
+}
+
+fn createCommandBuffer(
+    command_pool: c.VkCommandPool,
+    logical_device: c.VkDevice,
+) c.VkCommandBuffer {
+    const alloc_info = c.VkCommandBufferAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = command_pool,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    var command_buffer: c.VkCommandBuffer = undefined;
+    const alloc_res = c.vkAllocateCommandBuffers(logical_device, &alloc_info, &command_buffer);
+    if (alloc_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{alloc_res});
+        fatal("Failed to allocate command buffers");
+    }
+    return command_buffer;
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
