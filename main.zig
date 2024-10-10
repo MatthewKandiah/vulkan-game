@@ -100,12 +100,15 @@ pub fn main() void {
     );
     defer allocator.free(swap_chain_framebuffers);
 
+    const command_pool = createCommandPool(queue_family_indices, logical_device);
+
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroyCommandPool(logical_device, command_pool, null);
     for (swap_chain_framebuffers) |fb| {
         c.vkDestroyFramebuffer(logical_device, fb, null);
     }
@@ -708,6 +711,21 @@ fn createFrameBuffers(
         }
     }
     return swap_chain_framebuffers;
+}
+
+fn createCommandPool(queue_family_indices: QueueFamilyIndices, logical_device: c.VkDevice) c.VkCommandPool {
+    const pool_create_info = c.VkCommandPoolCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queue_family_indices.graphics_family.?,
+    };
+    var command_pool: c.VkCommandPool = undefined;
+    const pool_create_res = c.vkCreateCommandPool(logical_device, &pool_create_info, null, &command_pool);
+    if (pool_create_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{pool_create_res});
+        fatal("Failed to create command pool");
+    }
+    return command_pool;
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
