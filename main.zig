@@ -88,8 +88,9 @@ pub fn main() void {
 
     const render_pass = createRenderPass(logical_device, swap_chain_image_format);
 
-    // TODO - we're going to need to pass out the graphics pipeline too, need to either split into `createPipelineLayout` and `createGraphicsPipeline` or return a struct with both values
-    const pipeline_layout = createGraphicsPipeline(logical_device, swap_chain_extent);
+    const create_pipeline_result = createGraphicsPipeline(logical_device, swap_chain_extent, render_pass);
+    const pipeline_layout = create_pipeline_result.pipeline_layout;
+    const graphics_pipeline = create_pipeline_result.pipeline;
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -97,6 +98,7 @@ pub fn main() void {
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroyPipeline(logical_device, graphics_pipeline, null);
     c.vkDestroyPipelineLayout(logical_device, pipeline_layout, null);
     c.vkDestroyRenderPass(logical_device, render_pass, null);
     c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
@@ -510,7 +512,12 @@ fn createRenderPass(logical_device: c.VkDevice, image_format: c.VkFormat) c.VkRe
     return render_pass;
 }
 
-fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExtent2D) c.VkPipelineLayout {
+const CreateGraphicsPipelineResult = struct {
+    pipeline_layout: c.VkPipelineLayout,
+    pipeline: c.VkPipeline,
+};
+
+fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExtent2D, render_pass: c.VkRenderPass) CreateGraphicsPipelineResult {
     const vert_shader_module = createShaderModule(VERT_SHADER_RAW, logical_device);
     const frag_shader_module = createShaderModule(FRAG_SHADER_RAW, logical_device);
 
@@ -535,7 +542,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
     };
 
     const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{ vert_shader_stage_info, frag_shader_stage_info };
-    _ = shader_stages;
 
     const dynamic_states = [_]c.VkDynamicState{ c.VK_DYNAMIC_STATE_VIEWPORT, c.VK_DYNAMIC_STATE_SCISSOR };
     const dynamic_state = c.VkPipelineDynamicStateCreateInfo{
@@ -545,7 +551,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .pNext = null,
         .flags = 0,
     };
-    _ = dynamic_state; // autofix
 
     // NOTE - we've hardcoded our vertex data, so this will just pass nothing in for now
     const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
@@ -555,7 +560,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .vertexAttributeDescriptionCount = 0,
         .pVertexAttributeDescriptions = null,
     };
-    _ = vertex_input_info; // autofix
 
     const input_assembly = c.VkPipelineInputAssemblyStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -564,7 +568,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .pNext = null,
         .flags = 0,
     };
-    _ = input_assembly; // autofix
 
     const viewport = c.VkViewport{
         .x = 0,
@@ -588,7 +591,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .viewportCount = 1,
         .scissorCount = 1,
     };
-    _ = viewport_state; // autofix
 
     const rasterizer = c.VkPipelineRasterizationStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -603,7 +605,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .depthBiasClamp = 0,
         .depthBiasSlopeFactor = 0,
     };
-    _ = rasterizer; // autofix
 
     const multisampling = c.VkPipelineMultisampleStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -614,7 +615,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .alphaToCoverageEnable = c.VK_FALSE,
         .alphaToOneEnable = c.VK_FALSE,
     };
-    _ = multisampling; // autofix
 
     const color_blend_attachment = c.VkPipelineColorBlendAttachmentState{
         .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
@@ -627,7 +627,6 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .attachmentCount = 1,
         .pAttachments = &color_blend_attachment,
     };
-    _ = color_blending; // autofix
 
     var pipeline_layout: c.VkPipelineLayout = undefined;
     const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
@@ -639,9 +638,38 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         fatal("Failed to create pipeline layout");
     }
 
+    const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = 2,
+        .pStages = &shader_stages,
+        .pVertexInputState = &vertex_input_info,
+        .pInputAssemblyState = &input_assembly,
+        .pViewportState = &viewport_state,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pDepthStencilState = null,
+        .pColorBlendState = &color_blending,
+        .pDynamicState = &dynamic_state,
+        .layout = pipeline_layout,
+        .renderPass = render_pass,
+        .subpass = 0,
+        .basePipelineHandle = null,
+        .basePipelineIndex = -1,
+    };
+
+    var graphics_pipeline: c.VkPipeline = undefined;
+    const graphics_pipeline_create_res = c.vkCreateGraphicsPipelines(logical_device, null, 1, &pipeline_create_info, null, &graphics_pipeline);
+    if (graphics_pipeline_create_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{graphics_pipeline_create_res});
+        fatal("Failed to create graphics pipeline");
+    }
+
     c.vkDestroyShaderModule(logical_device, vert_shader_module, null);
     c.vkDestroyShaderModule(logical_device, frag_shader_module, null);
-    return pipeline_layout;
+    return .{
+        .pipeline_layout = pipeline_layout,
+        .pipeline = graphics_pipeline,
+    };
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
