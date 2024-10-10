@@ -91,6 +91,14 @@ pub fn main() void {
     const create_pipeline_result = createGraphicsPipeline(logical_device, swap_chain_extent, render_pass);
     const pipeline_layout = create_pipeline_result.pipeline_layout;
     const graphics_pipeline = create_pipeline_result.pipeline;
+    const swap_chain_framebuffers = createFrameBuffers(
+        allocator,
+        swap_chain_image_views,
+        render_pass,
+        swap_chain_extent,
+        logical_device,
+    );
+    defer allocator.free(swap_chain_framebuffers);
 
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
@@ -98,6 +106,9 @@ pub fn main() void {
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    for (swap_chain_framebuffers) |fb| {
+        c.vkDestroyFramebuffer(logical_device, fb, null);
+    }
     c.vkDestroyPipeline(logical_device, graphics_pipeline, null);
     c.vkDestroyPipelineLayout(logical_device, pipeline_layout, null);
     c.vkDestroyRenderPass(logical_device, render_pass, null);
@@ -670,6 +681,33 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .pipeline_layout = pipeline_layout,
         .pipeline = graphics_pipeline,
     };
+}
+
+fn createFrameBuffers(
+    allocator: std.mem.Allocator,
+    swap_chain_image_views: []c.VkImageView,
+    render_pass: c.VkRenderPass,
+    swap_chain_extent: c.VkExtent2D,
+    logical_device: c.VkDevice,
+) []c.VkFramebuffer {
+    const swap_chain_framebuffers = allocator.alloc(c.VkFramebuffer, swap_chain_image_views.len) catch fatalQuiet();
+    for (0..swap_chain_image_views.len) |i| {
+        const framebuffer_create_info = c.VkFramebufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass = render_pass,
+            .attachmentCount = 1,
+            .pAttachments = &swap_chain_image_views[i],
+            .width = swap_chain_extent.width,
+            .height = swap_chain_extent.height,
+            .layers = 1,
+        };
+        const framebuffer_create_res = c.vkCreateFramebuffer(logical_device, &framebuffer_create_info, null, &swap_chain_framebuffers[i]);
+        if (framebuffer_create_res != c.VK_SUCCESS) {
+            std.debug.print("res: {}\n", .{framebuffer_create_res});
+            fatal("Failed to create framebuffer");
+        }
+    }
+    return swap_chain_framebuffers;
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
