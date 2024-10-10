@@ -471,7 +471,38 @@ fn createGraphicsPipeline(logical_device: c.VkDevice) void {
     const vert_shader_module = createShaderModule(VERT_SHADER_RAW, logical_device);
     const frag_shader_module = createShaderModule(FRAG_SHADER_RAW, logical_device);
 
-    // TODO - continue Shader State Creation in here
+    const vert_shader_stage_info = c.VkPipelineShaderStageCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
+        .module = vert_shader_module,
+        .pName = "main",
+        .pNext = null,
+        .pSpecializationInfo = null,
+        .flags = 0,
+    };
+
+    const frag_shader_stage_info = c.VkPipelineShaderStageCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = frag_shader_module,
+        .pName = "main",
+        .pNext = null,
+        .pSpecializationInfo = null,
+        .flags = 0,
+    };
+
+    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{vert_shader_stage_info, frag_shader_stage_info};
+
+    const dynamic_states = [_]c.VkDynamicState {c.VK_DYNAMIC_STATE_VIEWPORT, c.VK_DYNAMIC_STATE_SCISSOR};
+    const dynamic_state = c.VkPipelineDynamicStateCreateInfo {
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = dynamic_states.len,
+        .pDynamicStates = &dynamic_states,
+        .pNext = null,
+        .flags = 0,
+    };
+
+    // TODO - continue Vertex Input from here
 
     c.vkDestroyShaderModule(logical_device, vert_shader_module, null);
     c.vkDestroyShaderModule(logical_device, frag_shader_module, null);
