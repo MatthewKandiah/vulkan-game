@@ -106,7 +106,6 @@ pub fn main() void {
         command_pool,
         logical_device,
     );
-    _ = command_buffer;
 
     var image_available_semaphore: c.VkSemaphore = undefined;
     var render_finished_semaphore: c.VkSemaphore = undefined;
@@ -116,7 +115,26 @@ pub fn main() void {
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
-        drawFrame();
+        drawFrame(
+            logical_device,
+            &in_flight_fence,
+            swap_chain,
+            image_available_semaphore,
+            render_finished_semaphore,
+            command_buffer,
+            render_pass,
+            swap_chain_framebuffers,
+            swap_chain_extent,
+            graphics_pipeline,
+            graphics_queue,
+            present_queue,
+        );
+
+        const device_idle_res = c.vkDeviceWaitIdle(logical_device);
+        if (device_idle_res != c.VK_SUCCESS) {
+            std.debug.print("res: {}\n", .{device_idle_res});
+            fatal("Failed to wait for logical device to be idle");
+        }
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
@@ -525,6 +543,15 @@ fn createRenderPass(logical_device: c.VkDevice, image_format: c.VkFormat) c.VkRe
         .pColorAttachments = &color_attachment_ref,
     };
 
+    const subpass_dependency = c.VkSubpassDependency{
+        .srcSubpass = c.VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = 0,
+        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    };
+
     var render_pass: c.VkRenderPass = undefined;
     const render_pass_create_info = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -532,6 +559,8 @@ fn createRenderPass(logical_device: c.VkDevice, image_format: c.VkFormat) c.VkRe
         .pAttachments = &color_attachment,
         .subpassCount = 1,
         .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &subpass_dependency,
     };
     const render_pass_create_res = c.vkCreateRenderPass(logical_device, &render_pass_create_info, null, &render_pass);
     if (render_pass_create_res != c.VK_SUCCESS) {
@@ -884,6 +913,7 @@ fn initialiseSyncObjects(
 
     const fence_create_info = c.VkFenceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
     const in_flight_fence_res = c.vkCreateFence(logical_device, &fence_create_info, null, in_flight_fence);
 
@@ -893,4 +923,87 @@ fn initialiseSyncObjects(
     }
 }
 
-fn drawFrame() void {}
+fn drawFrame(
+    logical_device: c.VkDevice,
+    in_flight_fence_ptr: *c.VkFence,
+    swap_chain: c.VkSwapchainKHR,
+    image_available_semaphore: c.VkSemaphore,
+    render_finished_semaphore: c.VkSemaphore,
+    command_buffer: c.VkCommandBuffer,
+    render_pass: c.VkRenderPass,
+    swap_chain_framebuffers: []c.VkFramebuffer,
+    swap_chain_extent: c.VkExtent2D,
+    graphics_pipeline: c.VkPipeline,
+    graphics_queue: c.VkQueue,
+    present_queue: c.VkQueue,
+) void {
+    const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
+    if (wait_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{wait_res});
+        fatal("Failed wait for fence");
+    }
+
+    const reset_res = c.vkResetFences(logical_device, 1, in_flight_fence_ptr);
+    if (reset_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{reset_res});
+        fatal("Failed fence reset");
+    }
+
+    var image_index: u32 = undefined;
+    const acquire_image_res = c.vkAcquireNextImageKHR(logical_device, swap_chain, std.math.maxInt(u64), image_available_semaphore, null, &image_index);
+    if (acquire_image_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{acquire_image_res});
+        fatal("Failed acquire image");
+    }
+
+    const reset_buffer_res = c.vkResetCommandBuffer(command_buffer, 0);
+    if (reset_buffer_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{reset_buffer_res});
+    }
+
+    recordCommandBuffer(
+        command_buffer,
+        image_index,
+        render_pass,
+        swap_chain_framebuffers,
+        swap_chain_extent,
+        graphics_pipeline,
+    );
+
+    const wait_semaphores = [_]c.VkSemaphore{image_available_semaphore};
+    const wait_stages = [_]c.VkPipelineStageFlags{c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    const signal_semaphores = [_]c.VkSemaphore{render_finished_semaphore};
+    const submit_info = c.VkSubmitInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = wait_semaphores.len,
+        .pWaitSemaphores = &wait_semaphores,
+        .pWaitDstStageMask = &wait_stages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+        .signalSemaphoreCount = signal_semaphores.len,
+        .pSignalSemaphores = &signal_semaphores,
+    };
+
+    const submit_res = c.vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence_ptr.*);
+    if (submit_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{submit_res});
+        fatal("failed to submit graphics queue");
+    }
+
+    const swap_chains = [_]c.VkSwapchainKHR{swap_chain};
+    const present_info = c.VkPresentInfoKHR{
+        .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &signal_semaphores,
+        .swapchainCount = swap_chains.len,
+        .pSwapchains = &swap_chains,
+        .pImageIndices = &image_index,
+        .pResults = null,
+    };
+
+    const present_res = c.vkQueuePresentKHR(present_queue, &present_info);
+    if (present_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{present_res});
+        fatal("Failed to present queue");
+    }
+}
