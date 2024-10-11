@@ -787,3 +787,76 @@ fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c
     }
     return shader_module;
 }
+
+fn recordCommandBuffer(
+    command_buffer: c.VkCommandBuffer,
+    image_index: u32,
+    render_pass: c.VkRenderPass,
+    swap_chain_framebuffers: []c.VkFramebuffer,
+    swap_chain_extent: c.VkExtent2D,
+    graphics_pipeline: c.VkPipeline,
+) void {
+    const begin_info = c.VkCommandBufferBeginInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    };
+    const begin_res = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+    if (begin_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{begin_res});
+        fatal("Failed to begin recording command buffer");
+    }
+
+    // clear to opaque black
+    const clear_color = c.VkClearValue{
+        .color = .{ .float32 = .{ 0, 0, 0, 1 } },
+    };
+
+    const render_pass_info = c.VkRenderPassBeginInfo{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass = render_pass,
+        .framebuffer = swap_chain_framebuffers[image_index],
+        .renderArea = .{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = swap_chain_extent,
+        },
+        .clearValueCount = 1,
+        .pClearValues = &clear_color,
+    };
+
+    c.vkCmdBeginRenderPass(
+        command_buffer,
+        &render_pass_info,
+        c.VK_SUBPASS_CONTENTS_INLINE,
+    );
+
+    c.vkCmdBindPipeline(
+        command_buffer,
+        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        graphics_pipeline,
+    );
+
+    const viewport = c.VkViewport{
+        .x = 0,
+        .y = 0,
+        .width = @floatFromInt(swap_chain_extent.width),
+        .height = @floatFromInt(swap_chain_extent.height),
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
+    c.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+    const scissor = c.VkRect2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = swap_chain_extent,
+    };
+    c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+    c.vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+    c.vkCmdEndRenderPass(command_buffer);
+
+    const end_command_buffer_res = c.vkEndCommandBuffer(command_buffer);
+    if (end_command_buffer_res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{end_command_buffer_res});
+        fatal("Failed to end command buffer");
+    }
+}
