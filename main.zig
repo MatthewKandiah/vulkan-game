@@ -108,12 +108,21 @@ pub fn main() void {
     );
     _ = command_buffer;
 
+    var image_available_semaphore: c.VkSemaphore = undefined;
+    var render_finished_semaphore: c.VkSemaphore = undefined;
+    var in_flight_fence: c.VkFence = undefined;
+    initialiseSyncObjects(logical_device, &image_available_semaphore, &render_finished_semaphore, &in_flight_fence);
+
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
+        drawFrame();
     }
     // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
     // cleanup
+    c.vkDestroySemaphore(logical_device, image_available_semaphore, null);
+    c.vkDestroySemaphore(logical_device, render_finished_semaphore, null);
+    c.vkDestroyFence(logical_device, in_flight_fence, null);
     c.vkDestroyCommandPool(logical_device, command_pool, null);
     for (swap_chain_framebuffers) |fb| {
         c.vkDestroyFramebuffer(logical_device, fb, null);
@@ -860,3 +869,28 @@ fn recordCommandBuffer(
         fatal("Failed to end command buffer");
     }
 }
+
+fn initialiseSyncObjects(
+    logical_device: c.VkDevice,
+    image_available_semaphore: *c.VkSemaphore,
+    render_finished_semaphore: *c.VkSemaphore,
+    in_flight_fence: *c.VkFence,
+) void {
+    const semaphore_create_info = c.VkSemaphoreCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+    const image_available_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, image_available_semaphore);
+    const render_finished_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, render_finished_semaphore);
+
+    const fence_create_info = c.VkFenceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    };
+    const in_flight_fence_res = c.vkCreateFence(logical_device, &fence_create_info, null, in_flight_fence);
+
+    if (render_finished_semaphore_res != c.VK_SUCCESS or image_available_semaphore_res != c.VK_SUCCESS or in_flight_fence_res != c.VK_SUCCESS) {
+        std.debug.print("{} {} {}\n", .{ image_available_semaphore_res, render_finished_semaphore_res, in_flight_fence_res });
+        fatal("Failed to initialise sync objects");
+    }
+}
+
+fn drawFrame() void {}
