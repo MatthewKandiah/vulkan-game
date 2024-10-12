@@ -9,12 +9,8 @@ pub fn build(b: *std.Build) !void {
     const input_dir_name = "shaders/";
     const output_dir_name = "shaders-out/";
     const shader_dir = try std.fs.openDirAbsolute(b.path(input_dir_name).getPath(b), .{ .iterate = true });
-    var open_dir_result = std.fs.openDirAbsolute(b.path(output_dir_name).getPath(b), .{});
-    if (open_dir_result) |*output_dir| {
-        output_dir.close();
-    } else |_| {
-        try std.fs.makeDirAbsolute(b.path(output_dir_name).getPath(b));
-    }
+    try makeDirIfItDoesNotExist(b, output_dir_name);
+
     var shader_dir_walker_1 = try shader_dir.walk(allocator);
     var shader_file_count: u32 = 0;
     while (true) {
@@ -84,4 +80,13 @@ pub fn build(b: *std.Build) !void {
     exe.linkSystemLibrary("glfw");
     exe.linkSystemLibrary("vulkan");
     b.installArtifact(exe);
+}
+
+fn makeDirIfItDoesNotExist(b: *std.Build, dir_name: []const u8) !void {
+    var open_dir_result = std.fs.openDirAbsolute(b.path(dir_name).getPath(b), .{});
+    if (open_dir_result) |*output_dir| {
+        output_dir.close();
+    } else |_| {
+        try std.fs.makeDirAbsolute(b.path(dir_name).getPath(b));
+    }
 }
