@@ -17,7 +17,9 @@ graph TD;
     A-->C
     B-->D
     C-->D
+```
 
+```mermaid
 sequenceDiagram
     participant Alice
     participant Bob
@@ -29,7 +31,9 @@ sequenceDiagram
     John-->>Alice: Great!
     John->>Bob: How about you?
     Bob-->>John: Jolly good!
+```
 
+```mermaid
 gantt
 dateFormat  YYYY-MM-DD
 title Adding GANTT diagram to mermaid
