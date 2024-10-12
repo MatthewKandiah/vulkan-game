@@ -75,10 +75,7 @@ pub fn main() void {
             .layerCount = 1,
         };
         const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swap_chain_image_views[i]);
-        if (image_view_create_res != c.VK_SUCCESS) {
-            std.debug.print("i: {}, image_view_create_res: {}\n", .{ i, image_view_create_res });
-            fatal("Failed to create image view");
-        }
+        fatalIfNotSuccess(image_view_create_res, "Failed to create image view");
     }
 
     var graphics_queue: c.VkQueue = undefined;
@@ -131,12 +128,9 @@ pub fn main() void {
         );
 
         const device_idle_res = c.vkDeviceWaitIdle(logical_device);
-        if (device_idle_res != c.VK_SUCCESS) {
-            std.debug.print("res: {}\n", .{device_idle_res});
-            fatal("Failed to wait for logical device to be idle");
-        }
+        fatalIfNotSuccess(device_idle_res, "Failed waiting for logical device to be idle");
     }
-    // NOTE: worth checking what is gained by calling this, guessing resources will get freed by OS on program exit anyway?
+
     // cleanup
     c.vkDestroySemaphore(logical_device, image_available_semaphore, null);
     c.vkDestroySemaphore(logical_device, render_finished_semaphore, null);
@@ -243,20 +237,14 @@ fn initVulkan(allocator: std.mem.Allocator) c.VkInstance {
 
     var result: c.VkInstance = undefined;
     const create_res = c.vkCreateInstance(&create_info, null, &result);
-    if (create_res != c.VK_SUCCESS) {
-        std.debug.print("create_res: {}\n", .{create_res});
-        fatal("Vulkan instance creation failed");
-    }
+    fatalIfNotSuccess(create_res, "Failed to create Vulkan instance");
     return result;
 }
 
 fn createSurface(instance: c.VkInstance, window: *c.GLFWwindow) c.VkSurfaceKHR {
     var surface: c.VkSurfaceKHR = undefined;
     const res = c.glfwCreateWindowSurface(instance, window, null, &surface);
-    if (res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{res});
-        fatal("Failed to create glfw surface");
-    }
+    fatalIfNotSuccess(res, "Failed to create glfw surface");
     return surface;
 }
 
@@ -390,10 +378,7 @@ fn createLogicalDevice(physical_device: c.VkPhysicalDevice, family_indices: Queu
     };
     var device: c.VkDevice = undefined;
     const res = c.vkCreateDevice(physical_device, &create_info, null, &device);
-    if (res != c.VK_SUCCESS) {
-        std.debug.print("res: {}", .{res});
-        fatal("Failed to create logical device");
-    }
+    fatalIfNotSuccess(res, "Failed to create logical device");
     return device;
 }
 
@@ -404,6 +389,13 @@ fn fatal(comptime mess: []const u8) noreturn {
 
 fn fatalQuiet() noreturn {
     fatal("");
+}
+
+fn fatalIfNotSuccess(res: c.VkResult, comptime mess: []const u8) void {
+    if (res != c.VK_SUCCESS) {
+        std.debug.print("res: {}\n", .{res});
+        fatal(mess);
+    }
 }
 
 const QueueFamilyIndices = struct {
@@ -509,10 +501,7 @@ fn createSwapChain(
     create_swap_chain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
     var swap_chain: c.VkSwapchainKHR = undefined;
     const create_swap_chain_res = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
-    if (create_swap_chain_res != c.VK_SUCCESS) {
-        std.debug.print("create_swap_chain_res: {}\n", .{create_swap_chain_res});
-        fatal("Failed to create swap chain");
-    }
+    fatalIfNotSuccess(create_swap_chain_res, "Failed to create swap chain");
     return CreateSwapChainResult{
         .swap_chain = swap_chain,
         .extent = swap_chain_extent,
@@ -563,10 +552,7 @@ fn createRenderPass(logical_device: c.VkDevice, image_format: c.VkFormat) c.VkRe
         .pDependencies = &subpass_dependency,
     };
     const render_pass_create_res = c.vkCreateRenderPass(logical_device, &render_pass_create_info, null, &render_pass);
-    if (render_pass_create_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{render_pass_create_res});
-        fatal("Failed to create render pass");
-    }
+    fatalIfNotSuccess(render_pass_create_res, "Failed to create render pass");
     return render_pass;
 }
 
@@ -691,10 +677,7 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     };
     const pipeline_layout_create_res = c.vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info, null, &pipeline_layout);
-    if (pipeline_layout_create_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{pipeline_layout_create_res});
-        fatal("Failed to create pipeline layout");
-    }
+    fatalIfNotSuccess(pipeline_layout_create_res, "Failed to create pipeline layout");
 
     const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -717,10 +700,7 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
 
     var graphics_pipeline: c.VkPipeline = undefined;
     const graphics_pipeline_create_res = c.vkCreateGraphicsPipelines(logical_device, null, 1, &pipeline_create_info, null, &graphics_pipeline);
-    if (graphics_pipeline_create_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{graphics_pipeline_create_res});
-        fatal("Failed to create graphics pipeline");
-    }
+    fatalIfNotSuccess(graphics_pipeline_create_res, "Failed to create graphics pipeline");
 
     c.vkDestroyShaderModule(logical_device, vert_shader_module, null);
     c.vkDestroyShaderModule(logical_device, frag_shader_module, null);
@@ -749,10 +729,7 @@ fn createFrameBuffers(
             .layers = 1,
         };
         const framebuffer_create_res = c.vkCreateFramebuffer(logical_device, &framebuffer_create_info, null, &swap_chain_framebuffers[i]);
-        if (framebuffer_create_res != c.VK_SUCCESS) {
-            std.debug.print("res: {}\n", .{framebuffer_create_res});
-            fatal("Failed to create framebuffer");
-        }
+        fatalIfNotSuccess(framebuffer_create_res, "Failed to create framebuffer");
     }
     return swap_chain_framebuffers;
 }
@@ -765,10 +742,7 @@ fn createCommandPool(queue_family_indices: QueueFamilyIndices, logical_device: c
     };
     var command_pool: c.VkCommandPool = undefined;
     const pool_create_res = c.vkCreateCommandPool(logical_device, &pool_create_info, null, &command_pool);
-    if (pool_create_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{pool_create_res});
-        fatal("Failed to create command pool");
-    }
+    fatalIfNotSuccess(pool_create_res, "Failed to create command pool");
     return command_pool;
 }
 
@@ -784,10 +758,7 @@ fn createCommandBuffer(
     };
     var command_buffer: c.VkCommandBuffer = undefined;
     const alloc_res = c.vkAllocateCommandBuffers(logical_device, &alloc_info, &command_buffer);
-    if (alloc_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{alloc_res});
-        fatal("Failed to allocate command buffers");
-    }
+    fatalIfNotSuccess(alloc_res, "Failed to allocate command buffers");
     return command_buffer;
 }
 
@@ -819,10 +790,7 @@ fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c
         null,
         &shader_module,
     );
-    if (module_create_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{module_create_res});
-        fatal("Failed to create shader module");
-    }
+    fatalIfNotSuccess(module_create_res, "Failed to create shader module");
     return shader_module;
 }
 
@@ -838,10 +806,7 @@ fn recordCommandBuffer(
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     };
     const begin_res = c.vkBeginCommandBuffer(command_buffer, &begin_info);
-    if (begin_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{begin_res});
-        fatal("Failed to begin recording command buffer");
-    }
+    fatalIfNotSuccess(begin_res, "Failed to begin recording command buffer");
 
     // clear to opaque black
     const clear_color = c.VkClearValue{
@@ -893,10 +858,7 @@ fn recordCommandBuffer(
     c.vkCmdEndRenderPass(command_buffer);
 
     const end_command_buffer_res = c.vkEndCommandBuffer(command_buffer);
-    if (end_command_buffer_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{end_command_buffer_res});
-        fatal("Failed to end command buffer");
-    }
+    fatalIfNotSuccess(end_command_buffer_res, "Failed to end command buffer");
 }
 
 fn initialiseSyncObjects(
@@ -909,18 +871,16 @@ fn initialiseSyncObjects(
         .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
     const image_available_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, image_available_semaphore);
+    fatalIfNotSuccess(image_available_semaphore_res, "Failed to create image available semaphore");
     const render_finished_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, render_finished_semaphore);
+    fatalIfNotSuccess(render_finished_semaphore_res, "Failed to create render finished semaphore");
 
     const fence_create_info = c.VkFenceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
     const in_flight_fence_res = c.vkCreateFence(logical_device, &fence_create_info, null, in_flight_fence);
-
-    if (render_finished_semaphore_res != c.VK_SUCCESS or image_available_semaphore_res != c.VK_SUCCESS or in_flight_fence_res != c.VK_SUCCESS) {
-        std.debug.print("{} {} {}\n", .{ image_available_semaphore_res, render_finished_semaphore_res, in_flight_fence_res });
-        fatal("Failed to initialise sync objects");
-    }
+    fatalIfNotSuccess(in_flight_fence_res, "Failed to create in-flight fence");
 }
 
 fn drawFrame(
@@ -938,28 +898,17 @@ fn drawFrame(
     present_queue: c.VkQueue,
 ) void {
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
-    if (wait_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{wait_res});
-        fatal("Failed wait for fence");
-    }
+    fatalIfNotSuccess(wait_res, "Failed waiting for fences");
 
     const reset_res = c.vkResetFences(logical_device, 1, in_flight_fence_ptr);
-    if (reset_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{reset_res});
-        fatal("Failed fence reset");
-    }
+    fatalIfNotSuccess(reset_res, "Failed to reset fences");
 
     var image_index: u32 = undefined;
     const acquire_image_res = c.vkAcquireNextImageKHR(logical_device, swap_chain, std.math.maxInt(u64), image_available_semaphore, null, &image_index);
-    if (acquire_image_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{acquire_image_res});
-        fatal("Failed acquire image");
-    }
+    fatalIfNotSuccess(acquire_image_res, "Failed to acquire next image");
 
     const reset_buffer_res = c.vkResetCommandBuffer(command_buffer, 0);
-    if (reset_buffer_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{reset_buffer_res});
-    }
+    fatalIfNotSuccess(reset_buffer_res, "Failed to reset command buffer");
 
     recordCommandBuffer(
         command_buffer,
@@ -985,10 +934,7 @@ fn drawFrame(
     };
 
     const submit_res = c.vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence_ptr.*);
-    if (submit_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{submit_res});
-        fatal("failed to submit graphics queue");
-    }
+    fatalIfNotSuccess(submit_res, "Failed to submit graphics queue");
 
     const swap_chains = [_]c.VkSwapchainKHR{swap_chain};
     const present_info = c.VkPresentInfoKHR{
@@ -1002,8 +948,5 @@ fn drawFrame(
     };
 
     const present_res = c.vkQueuePresentKHR(present_queue, &present_info);
-    if (present_res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{present_res});
-        fatal("Failed to present queue");
-    }
+    fatalIfNotSuccess(present_res, "Failed to present queue");
 }
