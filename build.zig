@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) !void {
     const input_dir_name = "shaders/";
     const output_dir_name = "shaders-out/";
     const shader_dir = try std.fs.openDirAbsolute(b.path(input_dir_name).getPath(b), .{ .iterate = true });
-
+    _ = std.fs.openDirAbsolute(b.path(output_dir_name).getPath(b), .{}) catch try std.fs.makeDirAbsolute(b.path(output_dir_name).getPath(b));
     var shader_dir_walker_1 = try shader_dir.walk(allocator);
     var shader_file_count: u32 = 0;
     while (true) {
