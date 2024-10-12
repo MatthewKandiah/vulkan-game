@@ -19,8 +19,8 @@ const DEVICE_EXTENSIONS = [_][]const u8{
 const WIDTH = 800;
 const HEIGHT = 600;
 
-const VERT_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/vert.spv";
-const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/frag.spv";
+const VERT_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.vert.spv";
+const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.frag.spv";
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 

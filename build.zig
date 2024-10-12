@@ -37,19 +37,29 @@ pub fn build(b: *std.Build) !void {
     var input_filenames = try allocator.alloc([]const u8, filenames.len);
     var output_filenames = try allocator.alloc([]const u8, filenames.len);
     for (filenames, 0..) |f, count| {
+        const extension = ".spv";
         const input_buf = try allocator.alloc(u8, input_dir_name.len + f.len);
-        const output_buf = try allocator.alloc(u8, output_dir_name.len + f.len);
+        const output_buf = try allocator.alloc(u8, output_dir_name.len + f.len + extension.len);
 
         _ = try std.fmt.bufPrint(input_buf, "{s}{s}", .{ input_dir_name, f });
-        _ = try std.fmt.bufPrint(output_buf, "{s}{s}", .{ output_dir_name, f });
+        _ = try std.fmt.bufPrint(output_buf, "{s}{s}{s}", .{ output_dir_name, f, extension });
 
         input_filenames[count] = input_buf;
         output_filenames[count] = output_buf;
     }
 
-    for (input_filenames, output_filenames) |is, os| {
-        std.debug.print("i: {s}\no: {s}\n\n", .{ is, os });
-        // TODO - okay now we've got a list of input filenames and output filenames, we want a step so `zig build shaders` will make all our glslc calls for us
+    var compile_shader_runs = try allocator.alloc(*std.Build.Step.Run, filenames.len);
+    for (input_filenames, output_filenames, 0..) |in_name, out_name, count| {
+        const shader_compile_run = b.addSystemCommand(&.{"glslc"});
+        shader_compile_run.addFileArg(std.Build.LazyPath{ .src_path = .{ .owner = b, .sub_path = in_name } });
+        shader_compile_run.addArg("-o");
+        shader_compile_run.addFileArg(std.Build.LazyPath{ .src_path = .{ .owner = b, .sub_path = out_name } });
+        compile_shader_runs[count] = shader_compile_run;
+    }
+
+    const compile_shaders_step = b.step("shaders", "Compile shaders");
+    for (compile_shader_runs) |run| {
+        compile_shaders_step.dependOn(&run.step);
     }
 
     const target = b.standardTargetOptions(.{});
