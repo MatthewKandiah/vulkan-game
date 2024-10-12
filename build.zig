@@ -35,7 +35,6 @@ pub fn build(b: *std.Build) !void {
     }
 
     var input_filenames = try allocator.alloc([]const u8, filenames.len);
-    // TODO - since we're already working out our output paths for the compiled shaders, it would be nice to pass those values into main.zig, instead of repeating them for the @embedFile calls
     var output_filenames = try allocator.alloc([]const u8, filenames.len);
     for (filenames, 0..) |f, count| {
         const extension = ".spv";
