@@ -5,6 +5,29 @@ pub fn build(b: *std.Build) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
+    try setupShaderBuildStep(b, allocator);
+
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const zlm = b.dependency("zlm", .{});
+
+    const exe = b.addExecutable(.{
+        .name = "vulkan-game",
+        .root_source_file = b.path("main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exe.root_module.addImport("zlm", zlm.module("zlm"));
+    exe.linkLibC();
+    exe.linkSystemLibrary("glfw");
+    exe.linkSystemLibrary("vulkan");
+    b.installArtifact(exe);
+}
+
+fn setupShaderBuildStep(b: *std.Build, allocator: std.mem.Allocator) !void {
+
     // compile shaders
     const input_dir_name = "shaders/";
     const output_dir_name = "shaders-out/";
@@ -62,24 +85,6 @@ pub fn build(b: *std.Build) !void {
     for (compile_shader_runs) |run| {
         compile_shaders_step.dependOn(&run.step);
     }
-
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    const zlm = b.dependency("zlm", .{});
-
-    const exe = b.addExecutable(.{
-        .name = "vulkan-game",
-        .root_source_file = b.path("main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    exe.root_module.addImport("zlm", zlm.module("zlm"));
-    exe.linkLibC();
-    exe.linkSystemLibrary("glfw");
-    exe.linkSystemLibrary("vulkan");
-    b.installArtifact(exe);
 }
 
 fn makeDirIfItDoesNotExist(b: *std.Build, dir_name: []const u8) !void {
