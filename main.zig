@@ -24,6 +24,12 @@ const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.fra
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
+const vertices = [_]Vertex{
+    Vertex{ .pos = zlm.vec2(0, -0.5), .color = zlm.vec3(1, 0, 0) },
+    Vertex{ .pos = zlm.vec2(0.5, 0.5), .color = zlm.vec3(0, 1, 0) },
+    Vertex{ .pos = zlm.vec2(-0.5, 0.5), .color = zlm.vec3(0, 0, 1) },
+};
+
 const MAX_FRAMES_IN_FLIGHT = 2;
 
 // nasty global state variable
@@ -652,13 +658,15 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swapchain_extent: c.VkExte
         .flags = 0,
     };
 
-    // NOTE - we've hardcoded our vertex data, so this will just pass nothing in for now
+    const binding_description = Vertex.getBindingDescription();
+    const attribute_descriptions = Vertex.getAttributeDescriptions();
+
     const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = 0,
-        .pVertexBindingDescriptions = null,
-        .vertexAttributeDescriptionCount = 0,
-        .pVertexAttributeDescriptions = null,
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &binding_description,
+        .vertexAttributeDescriptionCount = attribute_descriptions.len,
+        .pVertexAttributeDescriptions = &attribute_descriptions,
     };
 
     const input_assembly = c.VkPipelineInputAssemblyStateCreateInfo{
@@ -1172,3 +1180,34 @@ fn cleanupSwapchain(
     allocator.free(swapchain_images);
     allocator.free(swapchain_framebuffers);
 }
+
+const Vertex = struct {
+    pos: zlm.Vec2,
+    color: zlm.Vec3,
+
+    const Self = @This();
+
+    fn getBindingDescription() c.VkVertexInputBindingDescription {
+        return c.VkVertexInputBindingDescription{
+            .binding = 0,
+            .stride = @sizeOf(Self),
+            .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+    }
+
+    fn getAttributeDescriptions() [2]c.VkVertexInputAttributeDescription {
+        const positionAttributeDescription = c.VkVertexInputAttributeDescription{
+            .binding = 0,
+            .location = 0,
+            .format = c.VK_FORMAT_R32G32_SFLOAT,
+            .offset = @offsetOf(Vertex, "pos"),
+        };
+        const colorAttributeDescription = c.VkVertexInputAttributeDescription{
+            .binding = 0,
+            .location = 1,
+            .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = @offsetOf(Vertex, "color"),
+        };
+        return .{ positionAttributeDescription, colorAttributeDescription };
+    }
+};
