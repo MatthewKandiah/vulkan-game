@@ -37,6 +37,7 @@ pub fn main() void {
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
+
     const create_swapchain_res = createSwapchain(
         allocator,
         surface,
@@ -49,36 +50,14 @@ pub fn main() void {
     const swapchain_image_format = create_swapchain_res.format;
     const swapchain_extent = create_swapchain_res.extent;
 
-    var swapchain_image_count: u32 = undefined;
-    _ = c.vkGetSwapchainImagesKHR(logical_device, swapchain, &swapchain_image_count, null);
-    const swapchain_images = allocator.alloc(c.VkImage, swapchain_image_count) catch fatalQuiet();
-    _ = c.vkGetSwapchainImagesKHR(logical_device, swapchain, &swapchain_image_count, swapchain_images.ptr);
-
-    const swapchain_image_views = allocator.alloc(c.VkImageView, swapchain_image_count) catch fatalQuiet();
-    defer allocator.free(swapchain_image_views);
-    defer allocator.free(swapchain_images);
-    for (swapchain_images, 0..) |image, i| {
-        var image_view_create_info = std.mem.zeroes(c.VkImageViewCreateInfo);
-        image_view_create_info.sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        image_view_create_info.image = image;
-        image_view_create_info.viewType = c.VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.format = swapchain_image_format;
-        image_view_create_info.components = .{
-            .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-        };
-        image_view_create_info.subresourceRange = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-        const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swapchain_image_views[i]);
-        fatalIfNotSuccess(image_view_create_res, "Failed to create image view");
-    }
+    const create_image_views_res = createImageViews(
+        allocator,
+        logical_device,
+        swapchain,
+        swapchain_image_format,
+    );
+    const swapchain_image_views = create_image_views_res.swapchain_image_views;
+    const swapchain_images = create_image_views_res.swapchain_images;
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -136,6 +115,8 @@ pub fn main() void {
     }
 
     // cleanup
+    defer allocator.free(swapchain_image_views);
+    defer allocator.free(swapchain_images);
     for (
         image_available_semaphores,
         render_finished_semaphores,
@@ -520,6 +501,52 @@ fn createSwapchain(
         .swapchain = swapchain,
         .extent = swapchain_extent,
         .format = swapchain_surface_format.format,
+    };
+}
+
+const CreateImageViewsResult = struct {
+    swapchain_image_views: []c.VkImageView,
+    swapchain_images: []c.VkImage,
+};
+
+fn createImageViews(
+    allocator: std.mem.Allocator,
+    logical_device: c.VkDevice,
+    swapchain: c.VkSwapchainKHR,
+    swapchain_image_format: c.VkFormat,
+) CreateImageViewsResult {
+    var swapchain_image_count: u32 = undefined;
+    _ = c.vkGetSwapchainImagesKHR(logical_device, swapchain, &swapchain_image_count, null);
+    const swapchain_images = allocator.alloc(c.VkImage, swapchain_image_count) catch fatalQuiet();
+    _ = c.vkGetSwapchainImagesKHR(logical_device, swapchain, &swapchain_image_count, swapchain_images.ptr);
+
+    const swapchain_image_views = allocator.alloc(c.VkImageView, swapchain_image_count) catch fatalQuiet();
+    for (swapchain_images, 0..) |image, i| {
+        var image_view_create_info = std.mem.zeroes(c.VkImageViewCreateInfo);
+        image_view_create_info.sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        image_view_create_info.image = image;
+        image_view_create_info.viewType = c.VK_IMAGE_VIEW_TYPE_2D;
+        image_view_create_info.format = swapchain_image_format;
+        image_view_create_info.components = .{
+            .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+        };
+        image_view_create_info.subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+        const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swapchain_image_views[i]);
+        fatalIfNotSuccess(image_view_create_res, "Failed to create image view");
+    }
+
+    return CreateImageViewsResult{
+        .swapchain_image_views = swapchain_image_views,
+        .swapchain_images = swapchain_images,
     };
 }
 
