@@ -69,7 +69,7 @@ pub fn main() void {
     const create_pipeline_result = createGraphicsPipeline(logical_device, swapchain_extent, render_pass);
     const pipeline_layout = create_pipeline_result.pipeline_layout;
     const graphics_pipeline = create_pipeline_result.pipeline;
-    const swapchain_framebuffers = createFrameBuffers(
+    const swapchain_framebuffers = createFramebuffers(
         allocator,
         swapchain_image_views,
         render_pass,
@@ -114,6 +114,15 @@ pub fn main() void {
     }
 
     // cleanup
+    cleanupSwapchain(
+        allocator,
+        logical_device,
+        swapchain_framebuffers,
+        swapchain,
+        swapchain_image_views,
+        swapchain_images,
+    );
+
     for (
         image_available_semaphores,
         render_finished_semaphores,
@@ -128,24 +137,14 @@ pub fn main() void {
         c.vkDestroyFence(logical_device, in_flight_fence, null);
     }
     c.vkDestroyCommandPool(logical_device, command_pool, null);
-    for (swapchain_framebuffers) |fb| {
-        c.vkDestroyFramebuffer(logical_device, fb, null);
-    }
     c.vkDestroyPipeline(logical_device, graphics_pipeline, null);
     c.vkDestroyPipelineLayout(logical_device, pipeline_layout, null);
     c.vkDestroyRenderPass(logical_device, render_pass, null);
-    c.vkDestroySwapchainKHR(logical_device, swapchain, null);
-    for (swapchain_image_views) |image_view| {
-        c.vkDestroyImageView(logical_device, image_view, null);
-    }
     c.vkDestroyDevice(logical_device, null);
     c.vkDestroySurfaceKHR(vulkan_instance, surface, null);
     c.vkDestroyInstance(vulkan_instance, null);
     c.glfwDestroyWindow(window);
     c.glfwTerminate();
-    allocator.free(swapchain_image_views);
-    allocator.free(swapchain_images);
-    allocator.free(swapchain_framebuffers);
 }
 
 fn initWindow() *c.GLFWwindow {
@@ -751,7 +750,7 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swapchain_extent: c.VkExte
     };
 }
 
-fn createFrameBuffers(
+fn createFramebuffers(
     allocator: std.mem.Allocator,
     swapchain_image_views: []c.VkImageView,
     render_pass: c.VkRenderPass,
@@ -1001,4 +1000,92 @@ fn drawFrame(
 
     const present_res = c.vkQueuePresentKHR(present_queue, &present_info);
     fatalIfNotSuccess(present_res, "Failed to present queue");
+}
+
+const RecreateFramebuffersUpdatePointers = struct {
+    swapchain: *c.VkSwapchainKHR,
+    swapchain_format: *c.VkFormat,
+    swapchain_extent: *c.VkExtent2D,
+    swapchain_image_views: []c.VkImageView,
+    swapchain_images: []c.VkImage,
+    swapchain_framebuffers: []c.VkFrameBuffer,
+};
+
+fn recreateFramebuffers(
+    allocator: std.mem.Allocator,
+    surface: c.VkSurfaceKHR,
+    window: *c.GLFWwindow,
+    queue_family_indices: QueueFamilyIndices,
+    physical_device: c.VkPhysicalDevice,
+    logical_device: c.VkDevice,
+    render_pass: c.VkRenderPass,
+    update_pointers: RecreateFramebuffersUpdatePointers,
+) void {
+    const device_wait_res = c.vkDeviceWaitIdle();
+    fatalIfNotSuccess(device_wait_res);
+
+    cleanupSwapchain(
+        allocator,
+        logical_device,
+        update_pointers.swapchain_framebuffers,
+        update_pointers.swapchain.*,
+        update_pointers.swapchain_image_views,
+        update_pointers.swapchain_images,
+    );
+
+    const create_swapchain_result = createSwapchain(
+        allocator,
+        surface,
+        window,
+        queue_family_indices,
+        physical_device,
+        logical_device,
+    );
+    const new_swapchain = create_swapchain_result.swapchain;
+    const new_swapchain_format = create_swapchain_result.format;
+    const new_swapchain_extent = create_swapchain_result.extent;
+
+    const create_image_views_result = createImageViews(
+        allocator,
+        logical_device,
+        new_swapchain,
+        new_swapchain_format,
+    );
+    const new_image_views = create_image_views_result.swapchain_image_views;
+    const new_images = create_image_views_result.swapchain_images;
+
+    const new_framebuffers = createFramebuffers(
+        allocator,
+        new_image_views,
+        render_pass,
+        new_swapchain_extent,
+        logical_device,
+    );
+
+    update_pointers.swapchain = new_swapchain;
+    update_pointers.swapchain_format = new_swapchain_format;
+    update_pointers.swapchain_extent = new_swapchain_extent;
+    update_pointers.swapchain_images = new_images;
+    update_pointers.swapchain_image_views = new_image_views;
+    update_pointers.swapchain_framebuffers = new_framebuffers;
+}
+
+fn cleanupSwapchain(
+    allocator: std.mem.Allocator,
+    logical_device: c.VkDevice,
+    swapchain_framebuffers: []c.VkFramebuffer,
+    swapchain: c.VkSwapchainKHR,
+    swapchain_image_views: []c.VkImageView,
+    swapchain_images: []c.VkImage,
+) void {
+    for (swapchain_framebuffers) |fb| {
+        c.vkDestroyFramebuffer(logical_device, fb, null);
+    }
+    for (swapchain_image_views) |image_view| {
+        c.vkDestroyImageView(logical_device, image_view, null);
+    }
+    c.vkDestroySwapchainKHR(logical_device, swapchain, null);
+    allocator.free(swapchain_image_views);
+    allocator.free(swapchain_images);
+    allocator.free(swapchain_framebuffers);
 }
