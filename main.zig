@@ -37,7 +37,7 @@ pub fn main() void {
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
-    const create_swap_chain_res = createSwapChain(
+    const create_swapchain_res = createSwapchain(
         allocator,
         surface,
         window,
@@ -45,24 +45,24 @@ pub fn main() void {
         physical_device,
         logical_device,
     );
-    const swap_chain = create_swap_chain_res.swap_chain.?;
-    const swap_chain_image_format = create_swap_chain_res.format;
-    const swap_chain_extent = create_swap_chain_res.extent;
+    const swapchain = create_swapchain_res.swapchain.?;
+    const swapchain_image_format = create_swapchain_res.format;
+    const swapchain_extent = create_swapchain_res.extent;
 
-    var swap_chain_image_count: u32 = undefined;
-    _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, null);
-    const swap_chain_images = allocator.alloc(c.VkImage, swap_chain_image_count) catch fatalQuiet();
-    _ = c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &swap_chain_image_count, swap_chain_images.ptr);
+    var swapchain_image_count: u32 = undefined;
+    _ = c.vkGetSwapchainImagesKHR(logical_device, swapchain, &swapchain_image_count, null);
+    const swapchain_images = allocator.alloc(c.VkImage, swapchain_image_count) catch fatalQuiet();
+    _ = c.vkGetSwapchainImagesKHR(logical_device, swapchain, &swapchain_image_count, swapchain_images.ptr);
 
-    const swap_chain_image_views = allocator.alloc(c.VkImageView, swap_chain_image_count) catch fatalQuiet();
-    defer allocator.free(swap_chain_image_views);
-    defer allocator.free(swap_chain_images);
-    for (swap_chain_images, 0..) |image, i| {
+    const swapchain_image_views = allocator.alloc(c.VkImageView, swapchain_image_count) catch fatalQuiet();
+    defer allocator.free(swapchain_image_views);
+    defer allocator.free(swapchain_images);
+    for (swapchain_images, 0..) |image, i| {
         var image_view_create_info = std.mem.zeroes(c.VkImageViewCreateInfo);
         image_view_create_info.sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         image_view_create_info.image = image;
         image_view_create_info.viewType = c.VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.format = swap_chain_image_format;
+        image_view_create_info.format = swapchain_image_format;
         image_view_create_info.components = .{
             .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
             .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -76,7 +76,7 @@ pub fn main() void {
             .baseArrayLayer = 0,
             .layerCount = 1,
         };
-        const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swap_chain_image_views[i]);
+        const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swapchain_image_views[i]);
         fatalIfNotSuccess(image_view_create_res, "Failed to create image view");
     }
 
@@ -85,19 +85,19 @@ pub fn main() void {
     var present_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
 
-    const render_pass = createRenderPass(logical_device, swap_chain_image_format);
+    const render_pass = createRenderPass(logical_device, swapchain_image_format);
 
-    const create_pipeline_result = createGraphicsPipeline(logical_device, swap_chain_extent, render_pass);
+    const create_pipeline_result = createGraphicsPipeline(logical_device, swapchain_extent, render_pass);
     const pipeline_layout = create_pipeline_result.pipeline_layout;
     const graphics_pipeline = create_pipeline_result.pipeline;
-    const swap_chain_framebuffers = createFrameBuffers(
+    const swapchain_framebuffers = createFrameBuffers(
         allocator,
-        swap_chain_image_views,
+        swapchain_image_views,
         render_pass,
-        swap_chain_extent,
+        swapchain_extent,
         logical_device,
     );
-    defer allocator.free(swap_chain_framebuffers);
+    defer allocator.free(swapchain_framebuffers);
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
@@ -118,13 +118,13 @@ pub fn main() void {
         drawFrame(
             logical_device,
             &in_flight_fences[current_frame_index],
-            swap_chain,
+            swapchain,
             image_available_semaphores[current_frame_index],
             render_finished_semaphores[current_frame_index],
             command_buffers[current_frame_index],
             render_pass,
-            swap_chain_framebuffers,
-            swap_chain_extent,
+            swapchain_framebuffers,
+            swapchain_extent,
             graphics_pipeline,
             graphics_queue,
             present_queue,
@@ -150,14 +150,14 @@ pub fn main() void {
         c.vkDestroyFence(logical_device, in_flight_fence, null);
     }
     c.vkDestroyCommandPool(logical_device, command_pool, null);
-    for (swap_chain_framebuffers) |fb| {
+    for (swapchain_framebuffers) |fb| {
         c.vkDestroyFramebuffer(logical_device, fb, null);
     }
     c.vkDestroyPipeline(logical_device, graphics_pipeline, null);
     c.vkDestroyPipelineLayout(logical_device, pipeline_layout, null);
     c.vkDestroyRenderPass(logical_device, render_pass, null);
-    c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
-    for (swap_chain_image_views) |image_view| {
+    c.vkDestroySwapchainKHR(logical_device, swapchain, null);
+    for (swapchain_image_views) |image_view| {
         c.vkDestroyImageView(logical_device, image_view, null);
     }
     c.vkDestroyDevice(logical_device, null);
@@ -280,9 +280,9 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
         const extensions_supported = checkDeviceExtensionSupport(allocator, device);
         const indices = findQueueFamilies(allocator, device, surface);
         if (indices.isComplete() and extensions_supported) {
-            // querySwapChainSupport
-            var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
-            _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &swap_chain_capabilities);
+            // querySwapchainSupport
+            var swapchain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+            _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &swapchain_capabilities);
 
             var surface_format_count: u32 = undefined;
             _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null);
@@ -451,75 +451,75 @@ fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice, s
     return indices;
 }
 
-const CreateSwapChainResult = struct {
-    swap_chain: c.VkSwapchainKHR,
+const CreateSwapchainResult = struct {
+    swapchain: c.VkSwapchainKHR,
     format: c.VkFormat,
     extent: c.VkExtent2D,
 };
 
-fn createSwapChain(
+fn createSwapchain(
     allocator: std.mem.Allocator,
     surface: c.VkSurfaceKHR,
     window: *c.GLFWwindow,
     queue_family_indices: QueueFamilyIndices,
     physical_device: c.VkPhysicalDevice,
     logical_device: c.VkDevice,
-) CreateSwapChainResult {
-    var swap_chain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
-    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swap_chain_capabilities);
-    var swap_chain_surface_format_count: u32 = undefined;
-    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, null);
-    const swap_chain_surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, swap_chain_surface_format_count) catch fatalQuiet();
-    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swap_chain_surface_format_count, swap_chain_surface_formats.ptr);
-    var swap_chain_present_mode_count: u32 = undefined;
-    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, null);
-    const swap_chain_present_modes = allocator.alloc(c.VkPresentModeKHR, swap_chain_present_mode_count) catch fatalQuiet();
-    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swap_chain_present_mode_count, swap_chain_present_modes.ptr);
+) CreateSwapchainResult {
+    var swapchain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swapchain_capabilities);
+    var swapchain_surface_format_count: u32 = undefined;
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swapchain_surface_format_count, null);
+    const swapchain_surface_formats = allocator.alloc(c.VkSurfaceFormatKHR, swapchain_surface_format_count) catch fatalQuiet();
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &swapchain_surface_format_count, swapchain_surface_formats.ptr);
+    var swapchain_present_mode_count: u32 = undefined;
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swapchain_present_mode_count, null);
+    const swapchain_present_modes = allocator.alloc(c.VkPresentModeKHR, swapchain_present_mode_count) catch fatalQuiet();
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &swapchain_present_mode_count, swapchain_present_modes.ptr);
 
-    const swap_chain_surface_format = chooseSwapSurfaceFormat(swap_chain_surface_formats);
-    const swap_chain_present_mode = chooseSwapPresentMode(swap_chain_present_modes);
-    const swap_chain_extent = chooseSwapExtent(window, swap_chain_capabilities);
-    allocator.free(swap_chain_surface_formats);
-    allocator.free(swap_chain_present_modes);
-    var swap_chain_image_count: u32 = swap_chain_capabilities.minImageCount + 1;
-    if (swap_chain_capabilities.maxImageCount > 0 and swap_chain_image_count > swap_chain_capabilities.maxImageCount) {
-        swap_chain_image_count = swap_chain_capabilities.maxImageCount;
+    const swapchain_surface_format = chooseSwapSurfaceFormat(swapchain_surface_formats);
+    const swapchain_present_mode = chooseSwapPresentMode(swapchain_present_modes);
+    const swapchain_extent = chooseSwapExtent(window, swapchain_capabilities);
+    allocator.free(swapchain_surface_formats);
+    allocator.free(swapchain_present_modes);
+    var swapchain_image_count: u32 = swapchain_capabilities.minImageCount + 1;
+    if (swapchain_capabilities.maxImageCount > 0 and swapchain_image_count > swapchain_capabilities.maxImageCount) {
+        swapchain_image_count = swapchain_capabilities.maxImageCount;
     }
 
-    var create_swap_chain_info = std.mem.zeroes(c.VkSwapchainCreateInfoKHR);
-    create_swap_chain_info.sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    create_swap_chain_info.surface = surface;
-    create_swap_chain_info.minImageCount = swap_chain_image_count;
-    create_swap_chain_info.imageFormat = swap_chain_surface_format.format;
-    create_swap_chain_info.imageColorSpace = swap_chain_surface_format.colorSpace;
-    create_swap_chain_info.imageExtent = swap_chain_extent;
-    create_swap_chain_info.imageArrayLayers = 1;
+    var create_swapchain_info = std.mem.zeroes(c.VkSwapchainCreateInfoKHR);
+    create_swapchain_info.sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_swapchain_info.surface = surface;
+    create_swapchain_info.minImageCount = swapchain_image_count;
+    create_swapchain_info.imageFormat = swapchain_surface_format.format;
+    create_swapchain_info.imageColorSpace = swapchain_surface_format.colorSpace;
+    create_swapchain_info.imageExtent = swapchain_extent;
+    create_swapchain_info.imageArrayLayers = 1;
     // NOTE - this imageUsage is used to render an image directly to the screen
     //        if you want to perform post-processing you will want to render to another image first
     //        in that case consider using c.VK_IMAGE_USAGE_TRANSFER_DST_BIT and a memory operation
-    //        to transfer the rendered image to a swap chain image
-    create_swap_chain_info.imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    //        to transfer the rendered image to a swapchain image
+    create_swapchain_info.imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if (queue_family_indices.graphics_family != queue_family_indices.present_family) {
-        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
-        create_swap_chain_info.queueFamilyIndexCount = 2;
-        create_swap_chain_info.pQueueFamilyIndices = &[2]u32{ queue_family_indices.graphics_family.?, queue_family_indices.present_family.? };
+        create_swapchain_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
+        create_swapchain_info.queueFamilyIndexCount = 2;
+        create_swapchain_info.pQueueFamilyIndices = &[2]u32{ queue_family_indices.graphics_family.?, queue_family_indices.present_family.? };
     } else {
-        create_swap_chain_info.imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
-        create_swap_chain_info.queueFamilyIndexCount = 0;
-        create_swap_chain_info.pQueueFamilyIndices = null;
+        create_swapchain_info.imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
+        create_swapchain_info.queueFamilyIndexCount = 0;
+        create_swapchain_info.pQueueFamilyIndices = null;
     }
-    create_swap_chain_info.preTransform = swap_chain_capabilities.currentTransform;
-    create_swap_chain_info.compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    create_swap_chain_info.presentMode = swap_chain_present_mode;
-    create_swap_chain_info.clipped = c.VK_TRUE;
-    create_swap_chain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
-    var swap_chain: c.VkSwapchainKHR = undefined;
-    const create_swap_chain_res = c.vkCreateSwapchainKHR(logical_device, &create_swap_chain_info, null, &swap_chain);
-    fatalIfNotSuccess(create_swap_chain_res, "Failed to create swap chain");
-    return CreateSwapChainResult{
-        .swap_chain = swap_chain,
-        .extent = swap_chain_extent,
-        .format = swap_chain_surface_format.format,
+    create_swapchain_info.preTransform = swapchain_capabilities.currentTransform;
+    create_swapchain_info.compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_swapchain_info.presentMode = swapchain_present_mode;
+    create_swapchain_info.clipped = c.VK_TRUE;
+    create_swapchain_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
+    var swapchain: c.VkSwapchainKHR = undefined;
+    const create_swapchain_res = c.vkCreateSwapchainKHR(logical_device, &create_swapchain_info, null, &swapchain);
+    fatalIfNotSuccess(create_swapchain_res, "Failed to create swapchain");
+    return CreateSwapchainResult{
+        .swapchain = swapchain,
+        .extent = swapchain_extent,
+        .format = swapchain_surface_format.format,
     };
 }
 
@@ -575,7 +575,7 @@ const CreateGraphicsPipelineResult = struct {
     pipeline: c.VkPipeline,
 };
 
-fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExtent2D, render_pass: c.VkRenderPass) CreateGraphicsPipelineResult {
+fn createGraphicsPipeline(logical_device: c.VkDevice, swapchain_extent: c.VkExtent2D, render_pass: c.VkRenderPass) CreateGraphicsPipelineResult {
     const vert_shader_module = createShaderModule(VERT_SHADER_RAW, logical_device);
     const frag_shader_module = createShaderModule(FRAG_SHADER_RAW, logical_device);
 
@@ -630,8 +630,8 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
     const viewport = c.VkViewport{
         .x = 0,
         .y = 0,
-        .width = @floatFromInt(swap_chain_extent.width),
-        .height = @floatFromInt(swap_chain_extent.height),
+        .width = @floatFromInt(swapchain_extent.width),
+        .height = @floatFromInt(swapchain_extent.height),
         .minDepth = 0,
         .maxDepth = 1,
     };
@@ -639,7 +639,7 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
 
     const scissor = c.VkRect2D{
         .offset = c.VkOffset2D{ .x = 0, .y = 0 },
-        .extent = swap_chain_extent,
+        .extent = swapchain_extent,
     };
     _ = scissor; // autofix
 
@@ -726,26 +726,26 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swap_chain_extent: c.VkExt
 
 fn createFrameBuffers(
     allocator: std.mem.Allocator,
-    swap_chain_image_views: []c.VkImageView,
+    swapchain_image_views: []c.VkImageView,
     render_pass: c.VkRenderPass,
-    swap_chain_extent: c.VkExtent2D,
+    swapchain_extent: c.VkExtent2D,
     logical_device: c.VkDevice,
 ) []c.VkFramebuffer {
-    const swap_chain_framebuffers = allocator.alloc(c.VkFramebuffer, swap_chain_image_views.len) catch fatalQuiet();
-    for (0..swap_chain_image_views.len) |i| {
+    const swapchain_framebuffers = allocator.alloc(c.VkFramebuffer, swapchain_image_views.len) catch fatalQuiet();
+    for (0..swapchain_image_views.len) |i| {
         const framebuffer_create_info = c.VkFramebufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass,
             .attachmentCount = 1,
-            .pAttachments = &swap_chain_image_views[i],
-            .width = swap_chain_extent.width,
-            .height = swap_chain_extent.height,
+            .pAttachments = &swapchain_image_views[i],
+            .width = swapchain_extent.width,
+            .height = swapchain_extent.height,
             .layers = 1,
         };
-        const framebuffer_create_res = c.vkCreateFramebuffer(logical_device, &framebuffer_create_info, null, &swap_chain_framebuffers[i]);
+        const framebuffer_create_res = c.vkCreateFramebuffer(logical_device, &framebuffer_create_info, null, &swapchain_framebuffers[i]);
         fatalIfNotSuccess(framebuffer_create_res, "Failed to create framebuffer");
     }
-    return swap_chain_framebuffers;
+    return swapchain_framebuffers;
 }
 
 fn createCommandPool(queue_family_indices: QueueFamilyIndices, logical_device: c.VkDevice) c.VkCommandPool {
@@ -812,8 +812,8 @@ fn recordCommandBuffer(
     command_buffer: c.VkCommandBuffer,
     image_index: u32,
     render_pass: c.VkRenderPass,
-    swap_chain_framebuffers: []c.VkFramebuffer,
-    swap_chain_extent: c.VkExtent2D,
+    swapchain_framebuffers: []c.VkFramebuffer,
+    swapchain_extent: c.VkExtent2D,
     graphics_pipeline: c.VkPipeline,
 ) void {
     const begin_info = c.VkCommandBufferBeginInfo{
@@ -830,10 +830,10 @@ fn recordCommandBuffer(
     const render_pass_info = c.VkRenderPassBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass = render_pass,
-        .framebuffer = swap_chain_framebuffers[image_index],
+        .framebuffer = swapchain_framebuffers[image_index],
         .renderArea = .{
             .offset = .{ .x = 0, .y = 0 },
-            .extent = swap_chain_extent,
+            .extent = swapchain_extent,
         },
         .clearValueCount = 1,
         .pClearValues = &clear_color,
@@ -854,8 +854,8 @@ fn recordCommandBuffer(
     const viewport = c.VkViewport{
         .x = 0,
         .y = 0,
-        .width = @floatFromInt(swap_chain_extent.width),
-        .height = @floatFromInt(swap_chain_extent.height),
+        .width = @floatFromInt(swapchain_extent.width),
+        .height = @floatFromInt(swapchain_extent.height),
         .minDepth = 0,
         .maxDepth = 1,
     };
@@ -863,7 +863,7 @@ fn recordCommandBuffer(
 
     const scissor = c.VkRect2D{
         .offset = .{ .x = 0, .y = 0 },
-        .extent = swap_chain_extent,
+        .extent = swapchain_extent,
     };
     c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
@@ -911,13 +911,13 @@ fn initialiseSyncObjects(
 fn drawFrame(
     logical_device: c.VkDevice,
     in_flight_fence_ptr: *c.VkFence,
-    swap_chain: c.VkSwapchainKHR,
+    swapchain: c.VkSwapchainKHR,
     image_available_semaphore: c.VkSemaphore,
     render_finished_semaphore: c.VkSemaphore,
     command_buffer: c.VkCommandBuffer,
     render_pass: c.VkRenderPass,
-    swap_chain_framebuffers: []c.VkFramebuffer,
-    swap_chain_extent: c.VkExtent2D,
+    swapchain_framebuffers: []c.VkFramebuffer,
+    swapchain_extent: c.VkExtent2D,
     graphics_pipeline: c.VkPipeline,
     graphics_queue: c.VkQueue,
     present_queue: c.VkQueue,
@@ -929,7 +929,7 @@ fn drawFrame(
     fatalIfNotSuccess(reset_res, "Failed to reset fences");
 
     var image_index: u32 = undefined;
-    const acquire_image_res = c.vkAcquireNextImageKHR(logical_device, swap_chain, std.math.maxInt(u64), image_available_semaphore, null, &image_index);
+    const acquire_image_res = c.vkAcquireNextImageKHR(logical_device, swapchain, std.math.maxInt(u64), image_available_semaphore, null, &image_index);
     fatalIfNotSuccess(acquire_image_res, "Failed to acquire next image");
 
     const reset_buffer_res = c.vkResetCommandBuffer(command_buffer, 0);
@@ -939,8 +939,8 @@ fn drawFrame(
         command_buffer,
         image_index,
         render_pass,
-        swap_chain_framebuffers,
-        swap_chain_extent,
+        swapchain_framebuffers,
+        swapchain_extent,
         graphics_pipeline,
     );
 
@@ -961,13 +961,13 @@ fn drawFrame(
     const submit_res = c.vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence_ptr.*);
     fatalIfNotSuccess(submit_res, "Failed to submit graphics queue");
 
-    const swap_chains = [_]c.VkSwapchainKHR{swap_chain};
+    const swapchains = [_]c.VkSwapchainKHR{swapchain};
     const present_info = c.VkPresentInfoKHR{
         .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &signal_semaphores,
-        .swapchainCount = swap_chains.len,
-        .pSwapchains = &swap_chains,
+        .swapchainCount = swapchains.len,
+        .pSwapchains = &swapchains,
         .pImageIndices = &image_index,
         .pResults = null,
     };
