@@ -111,6 +111,19 @@ pub fn main() void {
     const bind_buffer_memory_res = c.vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
     fatalIfNotSuccess(bind_buffer_memory_res, "Failed to bind vertex buffer memory");
 
+    var data: *anyopaque = undefined;
+    const map_memory_res = c.vkMapMemory(
+        logical_device,
+        vertex_buffer_memory,
+        0,
+        @sizeOf(Vertex) * vertices.len,
+        0,
+        @ptrCast(&data),
+    );
+    fatalIfNotSuccess(map_memory_res, "Failed map memory");
+    std.mem.copyForwards(Vertex, @as([*]Vertex, @alignCast(@ptrCast(data)))[0..vertices.len], &vertices);
+    c.vkUnmapMemory(logical_device, vertex_buffer_memory);
+
     const command_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer = createCommandBuffers(
         command_pool,
         logical_device,
@@ -146,6 +159,7 @@ pub fn main() void {
             physical_device,
             &swapchain_image_views,
             &swapchain_images,
+            vertex_buffer,
         );
         current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -886,6 +900,7 @@ fn recordCommandBuffer(
     swapchain_framebuffers: []c.VkFramebuffer,
     swapchain_extent: c.VkExtent2D,
     graphics_pipeline: c.VkPipeline,
+    vertex_buffer: c.VkBuffer,
 ) void {
     const begin_info = c.VkCommandBufferBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -922,6 +937,10 @@ fn recordCommandBuffer(
         graphics_pipeline,
     );
 
+    const vertex_buffers = [_]c.VkBuffer{vertex_buffer};
+    const offsets = [_]u64{0};
+    c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
+
     const viewport = c.VkViewport{
         .x = 0,
         .y = 0,
@@ -938,7 +957,7 @@ fn recordCommandBuffer(
     };
     c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    c.vkCmdDraw(command_buffer, 3, 1, 0, 0);
+    c.vkCmdDraw(command_buffer, vertices.len, 1, 0, 0);
 
     c.vkCmdEndRenderPass(command_buffer);
 
@@ -1000,6 +1019,7 @@ fn drawFrame(
     physical_device: c.VkPhysicalDevice,
     swapchain_image_views: *[]c.VkImageView,
     swapchain_images: *[]c.VkImage,
+    vertex_buffer: c.VkBuffer,
 ) void {
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
     fatalIfNotSuccess(wait_res, "Failed waiting for fences");
@@ -1049,6 +1069,7 @@ fn drawFrame(
         swapchain_framebuffers.*,
         swapchain_extent.*,
         graphics_pipeline,
+        vertex_buffer,
     );
 
     const wait_semaphores = [_]c.VkSemaphore{image_available_semaphore};
