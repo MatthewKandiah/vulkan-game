@@ -3,7 +3,7 @@ Just curious how hard Vulkan is to get up and running compared to OpenGL --- We'
 Following the [Khronos Vulkan tutorial](https://docs.vulkan.org/tutorial/latest/00_Introduction.html), but using Zig instead of C++ because we're here for a good time.
 
 ## TODO
-- Continue from [Handling resizes explicitly](https://docs.vulkan.org/tutorial/latest/03_Drawing_a_triangle/04_Swap_chain_recreation.html)
+- Continue from [Vertex buffer creation](https://docs.vulkan.org/tutorial/latest/04_Vertex_buffers/01_Vertex_buffer_creation.html)
 
 ## NOTES
 Reviewed code so far after first triangle drawn to screen.
