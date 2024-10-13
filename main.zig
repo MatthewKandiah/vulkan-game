@@ -164,7 +164,7 @@ fn initWindow() *c.GLFWwindow {
 
     // GLFW originally intended to create OpenGL context, this tells it not to
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
-    c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
+    c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_TRUE);
 
     return c.glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", null, null) orelse fatal("GLFW window creation failed");
 }
