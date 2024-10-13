@@ -26,12 +26,20 @@ const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
 const MAX_FRAMES_IN_FLIGHT = 2;
 
+// nasty global state variable
+// apparently not all Vulkan drivers emit expected events on window resize, this is a way to ensure we catch those cases too
+var framebuffer_resized = false;
+fn framebufferResizedCallback(_: *c.GLFWwindow, _: i32, _: i32) void {
+    framebuffer_resized = true;
+}
+
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     const window = initWindow();
+    _ = c.glfwSetFramebufferSizeCallback(window, @ptrCast(&framebufferResizedCallback));
     const vulkan_instance = initVulkan(allocator);
     const surface = createSurface(vulkan_instance, window);
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
@@ -1043,7 +1051,8 @@ fn drawFrame(
     };
 
     const present_res = c.vkQueuePresentKHR(present_queue, &present_info);
-    if (present_res == c.VK_ERROR_OUT_OF_DATE_KHR or present_res == c.VK_SUBOPTIMAL_KHR) {
+    if (present_res == c.VK_ERROR_OUT_OF_DATE_KHR or present_res == c.VK_SUBOPTIMAL_KHR or framebuffer_resized) {
+        framebuffer_resized = false;
         recreateSwapchain(
             allocator,
             surface,
