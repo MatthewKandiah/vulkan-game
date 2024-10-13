@@ -93,6 +93,24 @@ pub fn main() void {
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
+    const vertex_buffer = createVertexBuffer(logical_device);
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &mem_requirements);
+    var vertex_buffer_memory: c.VkDeviceMemory = undefined;
+    const vertex_buffer_alloc_info = c.VkMemoryAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_requirements.size,
+        .memoryTypeIndex = findMemoryType(
+            physical_device,
+            mem_requirements.memoryTypeBits,
+            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        ),
+    };
+    const vertex_buffer_alloc_res = c.vkAllocateMemory(logical_device, &vertex_buffer_alloc_info, null, &vertex_buffer_memory);
+    fatalIfNotSuccess(vertex_buffer_alloc_res, "Failed to allocate vertex buffer memory");
+    const bind_buffer_memory_res = c.vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
+    fatalIfNotSuccess(bind_buffer_memory_res, "Failed to bind vertex buffer memory");
+
     const command_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer = createCommandBuffers(
         command_pool,
         logical_device,
@@ -144,6 +162,9 @@ pub fn main() void {
         swapchain_image_views,
         swapchain_images,
     );
+
+    c.vkDestroyBuffer(logical_device, vertex_buffer, null);
+    c.vkFreeMemory(logical_device, vertex_buffer_memory, null);
 
     for (
         image_available_semaphores,
@@ -1211,3 +1232,29 @@ const Vertex = struct {
         return .{ positionAttributeDescription, colorAttributeDescription };
     }
 };
+
+fn createVertexBuffer(logical_device: c.VkDevice) c.VkBuffer {
+    const create_buffer_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = @sizeOf(Vertex) * vertices.len,
+        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+    };
+    var vertex_buffer: c.VkBuffer = undefined;
+    const create_buffer_res = c.vkCreateBuffer(logical_device, &create_buffer_info, null, &vertex_buffer);
+    fatalIfNotSuccess(create_buffer_res, "Failed to create vertex buffer");
+    return vertex_buffer;
+}
+
+fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, properties: c.VkMemoryPropertyFlags) u32 {
+    var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+
+    for (0..mem_properties.memoryTypeCount) |i| {
+        if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
+            return @intCast(i);
+        }
+    }
+
+    fatal("Failed to find suitable memory type");
+}
