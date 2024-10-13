@@ -1086,6 +1086,15 @@ fn recreateSwapchain(
     render_pass: c.VkRenderPass,
     update_pointers: RecreateSwapchainUpdatePointers,
 ) void {
+    var width: i32 = 0;
+    var height: i32 = 0;
+    c.glfwGetFramebufferSize(window, &width, &height);
+    const window_minimised = width == 0 or height == 0;
+    while (window_minimised) {
+        c.glfwGetFramebufferSize(window, &width, &height);
+        c.glfwWaitEvents();
+    }
+
     const device_wait_res = c.vkDeviceWaitIdle(logical_device);
     fatalIfNotSuccess(device_wait_res, "Failed waiting for device idle");
 
