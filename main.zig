@@ -24,6 +24,8 @@ const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.fra
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
+const MAX_FRAMES_IN_FLIGHT = 2;
+
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -99,26 +101,27 @@ pub fn main() void {
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
-    const command_buffer = createCommandBuffer(
+    const command_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer = createCommandBuffers(
         command_pool,
         logical_device,
     );
 
-    var image_available_semaphore: c.VkSemaphore = undefined;
-    var render_finished_semaphore: c.VkSemaphore = undefined;
-    var in_flight_fence: c.VkFence = undefined;
-    initialiseSyncObjects(logical_device, &image_available_semaphore, &render_finished_semaphore, &in_flight_fence);
+    var image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]c.VkSemaphore = undefined;
+    var render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]c.VkSemaphore = undefined;
+    var in_flight_fences: [MAX_FRAMES_IN_FLIGHT]c.VkFence = undefined;
+    initialiseSyncObjects(logical_device, &image_available_semaphores, &render_finished_semaphores, &in_flight_fences);
 
+    var current_frame_index: u32 = 0;
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
         drawFrame(
             logical_device,
-            &in_flight_fence,
+            &in_flight_fences[current_frame_index],
             swap_chain,
-            image_available_semaphore,
-            render_finished_semaphore,
-            command_buffer,
+            image_available_semaphores[current_frame_index],
+            render_finished_semaphores[current_frame_index],
+            command_buffers[current_frame_index],
             render_pass,
             swap_chain_framebuffers,
             swap_chain_extent,
@@ -126,15 +129,26 @@ pub fn main() void {
             graphics_queue,
             present_queue,
         );
+        current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
         const device_idle_res = c.vkDeviceWaitIdle(logical_device);
         fatalIfNotSuccess(device_idle_res, "Failed waiting for logical device to be idle");
     }
 
     // cleanup
-    c.vkDestroySemaphore(logical_device, image_available_semaphore, null);
-    c.vkDestroySemaphore(logical_device, render_finished_semaphore, null);
-    c.vkDestroyFence(logical_device, in_flight_fence, null);
+    for (
+        image_available_semaphores,
+        render_finished_semaphores,
+        in_flight_fences,
+    ) |
+        image_available_semaphore,
+        render_finished_semaphore,
+        in_flight_fence,
+    | {
+        c.vkDestroySemaphore(logical_device, image_available_semaphore, null);
+        c.vkDestroySemaphore(logical_device, render_finished_semaphore, null);
+        c.vkDestroyFence(logical_device, in_flight_fence, null);
+    }
     c.vkDestroyCommandPool(logical_device, command_pool, null);
     for (swap_chain_framebuffers) |fb| {
         c.vkDestroyFramebuffer(logical_device, fb, null);
@@ -746,20 +760,20 @@ fn createCommandPool(queue_family_indices: QueueFamilyIndices, logical_device: c
     return command_pool;
 }
 
-fn createCommandBuffer(
+fn createCommandBuffers(
     command_pool: c.VkCommandPool,
     logical_device: c.VkDevice,
-) c.VkCommandBuffer {
+) [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer {
     const alloc_info = c.VkCommandBufferAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
+        .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
     };
-    var command_buffer: c.VkCommandBuffer = undefined;
-    const alloc_res = c.vkAllocateCommandBuffers(logical_device, &alloc_info, &command_buffer);
+    var command_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer = undefined;
+    const alloc_res = c.vkAllocateCommandBuffers(logical_device, &alloc_info, &command_buffers);
     fatalIfNotSuccess(alloc_res, "Failed to allocate command buffers");
-    return command_buffer;
+    return command_buffers;
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
@@ -863,24 +877,35 @@ fn recordCommandBuffer(
 
 fn initialiseSyncObjects(
     logical_device: c.VkDevice,
-    image_available_semaphore: *c.VkSemaphore,
-    render_finished_semaphore: *c.VkSemaphore,
-    in_flight_fence: *c.VkFence,
+    image_available_semaphores: []c.VkSemaphore,
+    render_finished_semaphores: []c.VkSemaphore,
+    in_flight_fences: []c.VkFence,
 ) void {
     const semaphore_create_info = c.VkSemaphoreCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
-    const image_available_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, image_available_semaphore);
-    fatalIfNotSuccess(image_available_semaphore_res, "Failed to create image available semaphore");
-    const render_finished_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, render_finished_semaphore);
-    fatalIfNotSuccess(render_finished_semaphore_res, "Failed to create render finished semaphore");
-
     const fence_create_info = c.VkFenceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
-    const in_flight_fence_res = c.vkCreateFence(logical_device, &fence_create_info, null, in_flight_fence);
-    fatalIfNotSuccess(in_flight_fence_res, "Failed to create in-flight fence");
+    for (
+        image_available_semaphores,
+        render_finished_semaphores,
+        in_flight_fences,
+    ) |
+        *image_available_semaphore,
+        *render_finished_semaphore,
+        *in_flight_fence,
+    | {
+        const image_available_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, image_available_semaphore);
+        fatalIfNotSuccess(image_available_semaphore_res, "Failed to create image available semaphore");
+
+        const render_finished_semaphore_res = c.vkCreateSemaphore(logical_device, &semaphore_create_info, null, render_finished_semaphore);
+        fatalIfNotSuccess(render_finished_semaphore_res, "Failed to create render finished semaphore");
+
+        const in_flight_fence_res = c.vkCreateFence(logical_device, &fence_create_info, null, in_flight_fence);
+        fatalIfNotSuccess(in_flight_fence_res, "Failed to create in-flight fence");
+    }
 }
 
 fn drawFrame(
