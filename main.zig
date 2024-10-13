@@ -46,9 +46,9 @@ pub fn main() void {
         physical_device,
         logical_device,
     );
-    const swapchain = create_swapchain_res.swapchain.?;
-    const swapchain_image_format = create_swapchain_res.format;
-    const swapchain_extent = create_swapchain_res.extent;
+    var swapchain = create_swapchain_res.swapchain.?;
+    var swapchain_image_format = create_swapchain_res.format;
+    var swapchain_extent = create_swapchain_res.extent;
 
     const create_image_views_res = createImageViews(
         allocator,
@@ -56,8 +56,8 @@ pub fn main() void {
         swapchain,
         swapchain_image_format,
     );
-    const swapchain_image_views = create_image_views_res.swapchain_image_views;
-    const swapchain_images = create_image_views_res.swapchain_images;
+    var swapchain_image_views = create_image_views_res.swapchain_image_views;
+    var swapchain_images = create_image_views_res.swapchain_images;
 
     var graphics_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.graphics_family.?, 0, &graphics_queue);
@@ -69,7 +69,7 @@ pub fn main() void {
     const create_pipeline_result = createGraphicsPipeline(logical_device, swapchain_extent, render_pass);
     const pipeline_layout = create_pipeline_result.pipeline_layout;
     const graphics_pipeline = create_pipeline_result.pipeline;
-    const swapchain_framebuffers = createFramebuffers(
+    var swapchain_framebuffers = createFramebuffers(
         allocator,
         swapchain_image_views,
         render_pass,
@@ -94,18 +94,26 @@ pub fn main() void {
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
         drawFrame(
+            allocator,
             logical_device,
             &in_flight_fences[current_frame_index],
-            swapchain,
+            @ptrCast(&swapchain),
             image_available_semaphores[current_frame_index],
             render_finished_semaphores[current_frame_index],
             command_buffers[current_frame_index],
             render_pass,
-            swapchain_framebuffers,
-            swapchain_extent,
+            &swapchain_framebuffers,
+            &swapchain_extent,
+            &swapchain_image_format,
             graphics_pipeline,
             graphics_queue,
             present_queue,
+            surface,
+            window,
+            queue_family_indices,
+            physical_device,
+            &swapchain_image_views,
+            &swapchain_images,
         );
         current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -935,28 +943,64 @@ fn initialiseSyncObjects(
 }
 
 fn drawFrame(
+    allocator: std.mem.Allocator,
     logical_device: c.VkDevice,
     in_flight_fence_ptr: *c.VkFence,
-    swapchain: c.VkSwapchainKHR,
+    swapchain: *c.VkSwapchainKHR,
     image_available_semaphore: c.VkSemaphore,
     render_finished_semaphore: c.VkSemaphore,
     command_buffer: c.VkCommandBuffer,
     render_pass: c.VkRenderPass,
-    swapchain_framebuffers: []c.VkFramebuffer,
-    swapchain_extent: c.VkExtent2D,
+    swapchain_framebuffers: *[]c.VkFramebuffer,
+    swapchain_extent: *c.VkExtent2D,
+    swapchain_format: *c.VkFormat,
     graphics_pipeline: c.VkPipeline,
     graphics_queue: c.VkQueue,
     present_queue: c.VkQueue,
+    surface: c.VkSurfaceKHR,
+    window: *c.GLFWwindow,
+    queue_family_indices: QueueFamilyIndices,
+    physical_device: c.VkPhysicalDevice,
+    swapchain_image_views: *[]c.VkImageView,
+    swapchain_images: *[]c.VkImage,
 ) void {
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
     fatalIfNotSuccess(wait_res, "Failed waiting for fences");
 
-    const reset_res = c.vkResetFences(logical_device, 1, in_flight_fence_ptr);
-    fatalIfNotSuccess(reset_res, "Failed to reset fences");
-
     var image_index: u32 = undefined;
-    const acquire_image_res = c.vkAcquireNextImageKHR(logical_device, swapchain, std.math.maxInt(u64), image_available_semaphore, null, &image_index);
-    fatalIfNotSuccess(acquire_image_res, "Failed to acquire next image");
+    const acquire_image_res = c.vkAcquireNextImageKHR(
+        logical_device,
+        swapchain.*,
+        std.math.maxInt(u64),
+        image_available_semaphore,
+        null,
+        &image_index,
+    );
+    if (acquire_image_res == c.VK_ERROR_OUT_OF_DATE_KHR or acquire_image_res == c.VK_SUBOPTIMAL_KHR) {
+        recreateSwapchain(
+            allocator,
+            surface,
+            window,
+            queue_family_indices,
+            physical_device,
+            logical_device,
+            render_pass,
+            RecreateSwapchainUpdatePointers{
+                .swapchain = swapchain,
+                .swapchain_format = swapchain_format,
+                .swapchain_extent = swapchain_extent,
+                .swapchain_image_views = swapchain_image_views,
+                .swapchain_images = swapchain_images,
+                .swapchain_framebuffers = swapchain_framebuffers,
+            },
+        );
+        return; // if swapchain is incompatible then we have to do this, we could choose not to for the suboptimal case
+    } else {
+        fatalIfNotSuccess(acquire_image_res, "Failed to acquire next image");
+    }
+
+    const reset_fence_res = c.vkResetFences(logical_device, 1, in_flight_fence_ptr);
+    fatalIfNotSuccess(reset_fence_res, "Failed to reset fences");
 
     const reset_buffer_res = c.vkResetCommandBuffer(command_buffer, 0);
     fatalIfNotSuccess(reset_buffer_res, "Failed to reset command buffer");
@@ -965,8 +1009,8 @@ fn drawFrame(
         command_buffer,
         image_index,
         render_pass,
-        swapchain_framebuffers,
-        swapchain_extent,
+        swapchain_framebuffers.*,
+        swapchain_extent.*,
         graphics_pipeline,
     );
 
@@ -987,7 +1031,7 @@ fn drawFrame(
     const submit_res = c.vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence_ptr.*);
     fatalIfNotSuccess(submit_res, "Failed to submit graphics queue");
 
-    const swapchains = [_]c.VkSwapchainKHR{swapchain};
+    const swapchains = [_]c.VkSwapchainKHR{swapchain.*};
     const present_info = c.VkPresentInfoKHR{
         .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
@@ -999,19 +1043,40 @@ fn drawFrame(
     };
 
     const present_res = c.vkQueuePresentKHR(present_queue, &present_info);
-    fatalIfNotSuccess(present_res, "Failed to present queue");
+    if (present_res == c.VK_ERROR_OUT_OF_DATE_KHR or present_res == c.VK_SUBOPTIMAL_KHR) {
+        recreateSwapchain(
+            allocator,
+            surface,
+            window,
+            queue_family_indices,
+            physical_device,
+            logical_device,
+            render_pass,
+            RecreateSwapchainUpdatePointers{
+                .swapchain = swapchain,
+                .swapchain_format = swapchain_format,
+                .swapchain_extent = swapchain_extent,
+                .swapchain_image_views = swapchain_image_views,
+                .swapchain_images = swapchain_images,
+                .swapchain_framebuffers = swapchain_framebuffers,
+            },
+        );
+        return; // if swapchain is incompatible then we have to do this, we could choose not to for the suboptimal case
+    } else {
+        fatalIfNotSuccess(present_res, "Failed to present image");
+    }
 }
 
-const RecreateFramebuffersUpdatePointers = struct {
+const RecreateSwapchainUpdatePointers = struct {
     swapchain: *c.VkSwapchainKHR,
     swapchain_format: *c.VkFormat,
     swapchain_extent: *c.VkExtent2D,
-    swapchain_image_views: []c.VkImageView,
-    swapchain_images: []c.VkImage,
-    swapchain_framebuffers: []c.VkFrameBuffer,
+    swapchain_image_views: *[]c.VkImageView,
+    swapchain_images: *[]c.VkImage,
+    swapchain_framebuffers: *[]c.VkFramebuffer,
 };
 
-fn recreateFramebuffers(
+fn recreateSwapchain(
     allocator: std.mem.Allocator,
     surface: c.VkSurfaceKHR,
     window: *c.GLFWwindow,
@@ -1019,18 +1084,18 @@ fn recreateFramebuffers(
     physical_device: c.VkPhysicalDevice,
     logical_device: c.VkDevice,
     render_pass: c.VkRenderPass,
-    update_pointers: RecreateFramebuffersUpdatePointers,
+    update_pointers: RecreateSwapchainUpdatePointers,
 ) void {
-    const device_wait_res = c.vkDeviceWaitIdle();
-    fatalIfNotSuccess(device_wait_res);
+    const device_wait_res = c.vkDeviceWaitIdle(logical_device);
+    fatalIfNotSuccess(device_wait_res, "Failed waiting for device idle");
 
     cleanupSwapchain(
         allocator,
         logical_device,
-        update_pointers.swapchain_framebuffers,
+        update_pointers.swapchain_framebuffers.*,
         update_pointers.swapchain.*,
-        update_pointers.swapchain_image_views,
-        update_pointers.swapchain_images,
+        update_pointers.swapchain_image_views.*,
+        update_pointers.swapchain_images.*,
     );
 
     const create_swapchain_result = createSwapchain(
@@ -1062,12 +1127,12 @@ fn recreateFramebuffers(
         logical_device,
     );
 
-    update_pointers.swapchain = new_swapchain;
-    update_pointers.swapchain_format = new_swapchain_format;
-    update_pointers.swapchain_extent = new_swapchain_extent;
-    update_pointers.swapchain_images = new_images;
-    update_pointers.swapchain_image_views = new_image_views;
-    update_pointers.swapchain_framebuffers = new_framebuffers;
+    update_pointers.swapchain.* = new_swapchain;
+    update_pointers.swapchain_format.* = new_swapchain_format;
+    update_pointers.swapchain_extent.* = new_swapchain_extent;
+    update_pointers.swapchain_images.* = new_images;
+    update_pointers.swapchain_image_views.* = new_image_views;
+    update_pointers.swapchain_framebuffers.* = new_framebuffers;
 }
 
 fn cleanupSwapchain(
