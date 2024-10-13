@@ -76,7 +76,6 @@ pub fn main() void {
         swapchain_extent,
         logical_device,
     );
-    defer allocator.free(swapchain_framebuffers);
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
@@ -115,8 +114,6 @@ pub fn main() void {
     }
 
     // cleanup
-    defer allocator.free(swapchain_image_views);
-    defer allocator.free(swapchain_images);
     for (
         image_available_semaphores,
         render_finished_semaphores,
@@ -146,6 +143,9 @@ pub fn main() void {
     c.vkDestroyInstance(vulkan_instance, null);
     c.glfwDestroyWindow(window);
     c.glfwTerminate();
+    allocator.free(swapchain_image_views);
+    allocator.free(swapchain_images);
+    allocator.free(swapchain_framebuffers);
 }
 
 fn initWindow() *c.GLFWwindow {
