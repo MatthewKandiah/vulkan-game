@@ -50,7 +50,6 @@ pub fn main() void {
     const surface = createSurface(vulkan_instance, window);
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
-    std.debug.print("qfi: {},", .{queue_family_indices});
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
 
     const create_swapchain_res = createSwapchain(
@@ -312,7 +311,7 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
     defer allocator.free(devices);
     _ = c.vkEnumeratePhysicalDevices(instance, &device_count, devices.ptr);
 
-    // TODO - select the best available GPU, or at least prefer discrete GPU over integrated
+    var best_device: ?c.VkPhysicalDevice = null;
     for (devices) |device| {
         // isDeviceSuitable
         const extensions_supported = checkDeviceExtensionSupport(allocator, device);
@@ -330,8 +329,18 @@ fn pickPhysicalDevice(allocator: std.mem.Allocator, instance: c.VkInstance, surf
             _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
             if (present_mode_count == 0) continue;
 
-            return device;
+            var device_properties: c.VkPhysicalDeviceProperties = undefined;
+            c.vkGetPhysicalDeviceProperties(device, &device_properties);
+            if (device_properties.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+                // prefer a discrete gpu
+                return device;
+            }
+            // if we don't find a discrete gpu, take anything that will do!
+            best_device = device;
         }
+    }
+    if (best_device) |device| {
+        return device;
     }
     fatal("Failed to find suitable physical GPU");
 }
