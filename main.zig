@@ -93,10 +93,11 @@ pub fn main() void {
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
+    const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
     var vertex_buffer: c.VkBuffer = undefined;
     const create_buffer_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = @sizeOf(Vertex) * vertices.len,
+        .size = vertex_buffer_size,
         .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -124,7 +125,7 @@ pub fn main() void {
         logical_device,
         vertex_buffer_memory,
         0,
-        @sizeOf(Vertex) * vertices.len,
+        vertex_buffer_size,
         0,
         @ptrCast(&data),
     );
