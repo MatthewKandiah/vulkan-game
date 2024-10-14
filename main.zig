@@ -50,6 +50,7 @@ pub fn main() void {
     const surface = createSurface(vulkan_instance, window);
     const physical_device = pickPhysicalDevice(allocator, vulkan_instance, surface);
     const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
+    std.debug.print("qfi: {},", .{queue_family_indices});
     const logical_device = createLogicalDevice(physical_device, queue_family_indices);
 
     const create_swapchain_res = createSwapchain(
@@ -417,11 +418,12 @@ fn createLogicalDevice(physical_device: c.VkPhysicalDevice, family_indices: Queu
         graphics_queue_create_info,
         present_queue_create_info,
     };
+    const queue_create_info_count: u32 = if (family_indices.graphics_family.? == family_indices.present_family.?) 1 else 2;
     const device_features = std.mem.zeroes(c.VkPhysicalDeviceFeatures);
     const create_info = c.VkDeviceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pQueueCreateInfos = &queue_create_infos,
-        .queueCreateInfoCount = queue_create_infos.len,
+        .queueCreateInfoCount = queue_create_info_count,
         .pEnabledFeatures = &device_features,
         .enabledExtensionCount = DEVICE_EXTENSIONS.len,
         .ppEnabledExtensionNames = @ptrCast(&DEVICE_EXTENSIONS),
@@ -460,32 +462,41 @@ const QueueFamilyIndices = struct {
     }
 };
 
-// TODO - I've done this lazily and just picked whatever works
-//        Would be better to preferentially pick a single index that can handle both families
 fn findQueueFamilies(allocator: std.mem.Allocator, device: c.VkPhysicalDevice, surface: c.VkSurfaceKHR) QueueFamilyIndices {
-    var indices = QueueFamilyIndices{
-        .graphics_family = null,
-        .present_family = null,
-    };
-
     var queue_family_count: u32 = 0;
     c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
     const queue_families = allocator.alloc(c.VkQueueFamilyProperties, queue_family_count) catch fatalQuiet();
     defer allocator.free(queue_families);
     c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
 
+    var valid_graphics_family: ?u32 = null;
+    var valid_present_family: ?u32 = null;
     for (queue_families, 0..) |qf, i| {
-        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-            indices.graphics_family = @intCast(i);
-        }
-
+        const does_support_graphics = qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0;
         var present_support: u32 = c.VK_FALSE;
         _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface, &present_support);
+        const does_support_present = present_support != c.VK_FALSE;
+
+        // if one queue family supports all our requirements, it's best to use it
+        if (does_support_graphics and does_support_present) {
+            return QueueFamilyIndices{
+                .graphics_family = @intCast(i),
+                .present_family = @intCast(i),
+            };
+        }
+
+        if (qf.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+            valid_graphics_family = @intCast(i);
+        }
+
         if (present_support != c.VK_FALSE) {
-            indices.present_family = @intCast(i);
+            valid_present_family = @intCast(i);
         }
     }
-    return indices;
+    return QueueFamilyIndices{
+        .graphics_family = valid_graphics_family,
+        .present_family = valid_present_family,
+    };
 }
 
 const CreateSwapchainResult = struct {
