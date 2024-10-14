@@ -93,7 +93,15 @@ pub fn main() void {
 
     const command_pool = createCommandPool(queue_family_indices, logical_device);
 
-    const vertex_buffer = createVertexBuffer(logical_device);
+    var vertex_buffer: c.VkBuffer = undefined;
+    const create_buffer_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = @sizeOf(Vertex) * vertices.len,
+        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+    };
+    const create_buffer_res = c.vkCreateBuffer(logical_device, &create_buffer_info, null, &vertex_buffer);
+    fatalIfNotSuccess(create_buffer_res, "Failed to create vertex buffer");
     var mem_requirements: c.VkMemoryRequirements = undefined;
     c.vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &mem_requirements);
     var vertex_buffer_memory: c.VkDeviceMemory = undefined;
@@ -1273,19 +1281,6 @@ const Vertex = struct {
         return .{ positionAttributeDescription, colorAttributeDescription };
     }
 };
-
-fn createVertexBuffer(logical_device: c.VkDevice) c.VkBuffer {
-    const create_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = @sizeOf(Vertex) * vertices.len,
-        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-    var vertex_buffer: c.VkBuffer = undefined;
-    const create_buffer_res = c.vkCreateBuffer(logical_device, &create_buffer_info, null, &vertex_buffer);
-    fatalIfNotSuccess(create_buffer_res, "Failed to create vertex buffer");
-    return vertex_buffer;
-}
 
 fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, properties: c.VkMemoryPropertyFlags) u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
