@@ -321,6 +321,7 @@ pub fn main() void {
     initialiseSyncObjects(logical_device, &image_available_semaphores, &render_finished_semaphores, &in_flight_fences);
 
     var current_frame_index: u32 = 0;
+    const start_time = std.time.milliTimestamp();
     // mainLoop
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
@@ -347,6 +348,8 @@ pub fn main() void {
             &swapchain_images,
             vertex_buffer,
             indices_buffer,
+            uniform_buffers_mapped[current_frame_index],
+            start_time,
         );
         current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -1247,6 +1250,8 @@ fn drawFrame(
     swapchain_images: *[]c.VkImage,
     vertex_buffer: c.VkBuffer,
     indices_buffer: c.VkBuffer,
+    uniform_buffer_mapped: *anyopaque,
+    start_time: i64,
 ) void {
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
     fatalIfNotSuccess(wait_res, "Failed waiting for fences");
@@ -1299,6 +1304,34 @@ fn drawFrame(
         vertex_buffer,
         indices_buffer,
     );
+
+    const current_time = std.time.milliTimestamp();
+    const time = current_time - start_time;
+    const angle: f32 = @floatFromInt(@divFloor(time, 1000));
+    const ubo = UniformBufferObject{
+        // rotation in the x-y plane
+        .model = linalg.Mat4(f32).new(
+            linalg.Vec4(f32).new(@cos(angle), @sin(angle), 0, 0),
+            linalg.Vec4(f32).new(-@sin(angle), @cos(angle), 0, 0),
+            linalg.Vec4(f32).new(0, 0, 1, 0),
+            linalg.Vec4(f32).new(0, 0, 0, 1),
+        ),
+        // move the space forward == move the camera back
+        .view = linalg.Mat4(f32).new(
+            linalg.Vec4(f32).new(1, 0, 0, 0),
+            linalg.Vec4(f32).new(0, 1, 0, 0),
+            linalg.Vec4(f32).new(0, 0, 1, -2),
+            linalg.Vec4(f32).new(0, 0, 0, 1),
+        ),
+        // simple projection
+        .proj = linalg.Mat4(f32).new(
+            linalg.Vec4(f32).new(1, 0, 0, 0),
+            linalg.Vec4(f32).new(0, 1, 0, 0),
+            linalg.Vec4(f32).new(0, 0, 0, 0),
+            linalg.Vec4(f32).new(0, 0, 0, 1),
+        ),
+    };
+    std.mem.copyForwards(UniformBufferObject, @as([*]UniformBufferObject, @alignCast(@ptrCast(uniform_buffer_mapped)))[0..1], &.{ubo});
 
     const wait_semaphores = [_]c.VkSemaphore{image_available_semaphore};
     const wait_stages = [_]c.VkPipelineStageFlags{c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
