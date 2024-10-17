@@ -268,6 +268,48 @@ pub fn main() void {
     c.vkDestroyBuffer(logical_device, indices_staging_buffer, null);
     c.vkFreeMemory(logical_device, indices_staging_buffer_memory, null);
 
+    const uniform_buffer_size = @sizeOf(UniformBufferObject);
+    var uniform_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkBuffer = undefined;
+    var uniform_buffers_memory: [MAX_FRAMES_IN_FLIGHT]c.VkDeviceMemory = undefined;
+    var uniform_buffers_mapped: [MAX_FRAMES_IN_FLIGHT]*anyopaque = undefined;
+
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        const create_uniform_buffer_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = uniform_buffer_size,
+            .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        };
+        const create_uniform_buffer_res = c.vkCreateBuffer(logical_device, &create_uniform_buffer_info, null, &uniform_buffers[i]);
+        fatalIfNotSuccess(create_uniform_buffer_res, "Failed to create uniform buffer");
+        var uniform_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
+        c.vkGetBufferMemoryRequirements(logical_device, uniform_buffers[i], &uniform_buffer_mem_requirements);
+        const uniform_buffer_alloc_info = c.VkMemoryAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = uniform_buffer_mem_requirements.size,
+            .memoryTypeIndex = findMemoryType(
+                physical_device,
+                uniform_buffer_mem_requirements.memoryTypeBits,
+                c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            ),
+        };
+        const uniform_buffer_alloc_res = c.vkAllocateMemory(logical_device, &uniform_buffer_alloc_info, null, &uniform_buffers_memory[i]);
+        fatalIfNotSuccess(uniform_buffer_alloc_res, "Failed to allocate uniform buffer memory");
+        const bind_uniform_buffer_memory_res = c.vkBindBufferMemory(logical_device, uniform_buffers[i], uniform_buffers_memory[i], 0);
+        fatalIfNotSuccess(bind_uniform_buffer_memory_res, "Failed to bind uniform buffer memory");
+
+        // Note - persistent mapping, by keeping these pointers for the application's lifetime we can write data to it whenever we need to
+        const uniform_map_memory_res = c.vkMapMemory(
+            logical_device,
+            uniform_buffers_memory[i],
+            0,
+            uniform_buffer_size,
+            0,
+            @ptrCast(&uniform_buffers_mapped[i]),
+        );
+        fatalIfNotSuccess(uniform_map_memory_res, "Failed to map uniform memory");
+    }
+
     const command_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer = createCommandBuffers(
         command_pool,
         logical_device,
@@ -321,6 +363,11 @@ pub fn main() void {
         swapchain_image_views,
         swapchain_images,
     );
+
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        c.vkDestroyBuffer(logical_device, uniform_buffers[i], null);
+        c.vkFreeMemory(logical_device, uniform_buffers_memory[i], null);
+    }
 
     c.vkDestroyDescriptorSetLayout(logical_device, ubo_descriptor_set_layout, null);
 
