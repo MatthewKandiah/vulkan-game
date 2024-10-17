@@ -1,5 +1,5 @@
 const std = @import("std");
-const zlm = @import("zlm");
+const linalg = @import("./linalg.zig");
 
 const c = @cImport({
     @cDefine("GLFW_INCLUDE_VULKAN", {});
@@ -1379,15 +1379,15 @@ fn cleanupSwapchain(
 }
 
 const Vertex = struct {
-    pos: zlm.Vec2,
-    color: zlm.Vec3,
+    pos: linalg.Vec2(f32),
+    color: linalg.Vec3(f32),
 
     const Self = @This();
 
     fn new(x: f32, y: f32, r: f32, g: f32, b: f32) Self {
         return Self{
-            .pos = zlm.vec2(x, y),
-            .color = zlm.vec3(r, g, b),
+            .pos = linalg.Vec2(f32).new(x, y),
+            .color = linalg.Vec3(f32).new(r, g, b),
         };
     }
 
