@@ -83,7 +83,24 @@ pub fn main() void {
 
     const render_pass = createRenderPass(logical_device, swapchain_image_format);
 
-    const create_pipeline_result = createGraphicsPipeline(logical_device, swapchain_extent, render_pass);
+    const ubo_descriptor_set_layout_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 0,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+        .pImmutableSamplers = null,
+    };
+
+    var ubo_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+    const ubo_descriptor_set_layout_create_info = c.VkDescriptorSetLayoutCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &ubo_descriptor_set_layout_binding,
+    };
+    const ubo_descriptor_set_layout_create_res = c.vkCreateDescriptorSetLayout(logical_device, &ubo_descriptor_set_layout_create_info, null, &ubo_descriptor_set_layout);
+    fatalIfNotSuccess(ubo_descriptor_set_layout_create_res, "Failed to create descriptor set layout");
+
+    const create_pipeline_result = createGraphicsPipeline(logical_device, swapchain_extent, render_pass, &ubo_descriptor_set_layout);
     const pipeline_layout = create_pipeline_result.pipeline_layout;
     const graphics_pipeline = create_pipeline_result.pipeline;
     var swapchain_framebuffers = createFramebuffers(
@@ -304,6 +321,8 @@ pub fn main() void {
         swapchain_image_views,
         swapchain_images,
     );
+
+    c.vkDestroyDescriptorSetLayout(logical_device, ubo_descriptor_set_layout, null);
 
     c.vkDestroyBuffer(logical_device, vertex_buffer, null);
     c.vkFreeMemory(logical_device, vertex_buffer_memory, null);
@@ -809,7 +828,12 @@ const CreateGraphicsPipelineResult = struct {
     pipeline: c.VkPipeline,
 };
 
-fn createGraphicsPipeline(logical_device: c.VkDevice, swapchain_extent: c.VkExtent2D, render_pass: c.VkRenderPass) CreateGraphicsPipelineResult {
+fn createGraphicsPipeline(
+    logical_device: c.VkDevice,
+    swapchain_extent: c.VkExtent2D,
+    render_pass: c.VkRenderPass,
+    descriptor_set_layout_ptr: *c.VkDescriptorSetLayout,
+) CreateGraphicsPipelineResult {
     const vert_shader_module = createShaderModule(VERT_SHADER_RAW, logical_device);
     const frag_shader_module = createShaderModule(FRAG_SHADER_RAW, logical_device);
 
@@ -925,6 +949,8 @@ fn createGraphicsPipeline(logical_device: c.VkDevice, swapchain_extent: c.VkExte
     var pipeline_layout: c.VkPipelineLayout = undefined;
     const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = descriptor_set_layout_ptr,
     };
     const pipeline_layout_create_res = c.vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info, null, &pipeline_layout);
     fatalIfNotSuccess(pipeline_layout_create_res, "Failed to create pipeline layout");
@@ -1378,7 +1404,7 @@ fn cleanupSwapchain(
     allocator.free(swapchain_framebuffers);
 }
 
-const Vertex = struct {
+const Vertex = extern struct {
     pos: linalg.Vec2(f32),
     color: linalg.Vec3(f32),
 
@@ -1475,3 +1501,9 @@ fn copyBuffer(
 
     c.vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
 }
+
+const UniformBufferObject = extern struct {
+    model: linalg.Mat4(f32),
+    view: linalg.Mat4(f32),
+    proj: linalg.Mat4(f32),
+};
