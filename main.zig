@@ -310,6 +310,49 @@ pub fn main() void {
         fatalIfNotSuccess(uniform_map_memory_res, "Failed to map uniform memory");
     }
 
+    const descriptor_pool_size = c.VkDescriptorPoolSize{
+        .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+    };
+    const descriptor_pool_create_info = c.VkDescriptorPoolCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = 1,
+        .pPoolSizes = &descriptor_pool_size,
+        .maxSets = MAX_FRAMES_IN_FLIGHT,
+    };
+    var descriptor_pool: c.VkDescriptorPool = undefined;
+    const descriptor_pool_create_res = c.vkCreateDescriptorPool(logical_device, &descriptor_pool_create_info, null, &descriptor_pool);
+    fatalIfNotSuccess(descriptor_pool_create_res, "Failed to create descriptor pool");
+
+    const descriptor_set_layouts = [MAX_FRAMES_IN_FLIGHT]c.VkDescriptorSetLayout{ ubo_descriptor_set_layout, ubo_descriptor_set_layout };
+    const descriptor_set_allocate_info = c.VkDescriptorSetAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+        .pSetLayouts = &descriptor_set_layouts,
+    };
+    var descriptor_sets: [MAX_FRAMES_IN_FLIGHT]c.VkDescriptorSet = undefined;
+    const descriptor_sets_allocate_res = c.vkAllocateDescriptorSets(logical_device, &descriptor_set_allocate_info, &descriptor_sets);
+    fatalIfNotSuccess(descriptor_sets_allocate_res, "Failed to allocate descriptor sets");
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        const descriptor_buffer_info = c.VkDescriptorBufferInfo{
+            .buffer = uniform_buffers[i],
+            .offset = 0,
+            .range = @sizeOf(UniformBufferObject),
+        };
+        const write_descriptor_set = c.VkWriteDescriptorSet{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = descriptor_sets[i],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &descriptor_buffer_info,
+        };
+
+        c.vkUpdateDescriptorSets(logical_device, 1, &write_descriptor_set, 0, null);
+    }
+
     const command_buffers: [MAX_FRAMES_IN_FLIGHT]c.VkCommandBuffer = createCommandBuffers(
         command_pool,
         logical_device,
@@ -350,6 +393,8 @@ pub fn main() void {
             indices_buffer,
             uniform_buffers_mapped[current_frame_index],
             start_time,
+            &descriptor_sets[current_frame_index],
+            pipeline_layout,
         );
         current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -371,6 +416,8 @@ pub fn main() void {
         c.vkDestroyBuffer(logical_device, uniform_buffers[i], null);
         c.vkFreeMemory(logical_device, uniform_buffers_memory[i], null);
     }
+
+    c.vkDestroyDescriptorPool(logical_device, descriptor_pool, null);
 
     c.vkDestroyDescriptorSetLayout(logical_device, ubo_descriptor_set_layout, null);
 
@@ -960,6 +1007,7 @@ fn createGraphicsPipeline(
         .scissorCount = 1,
     };
 
+    // NOTE - diverged from tutorial here, they have to switch their frontFace to counter clockwise
     const rasterizer = c.VkPipelineRasterizationStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = c.VK_FALSE,
@@ -1129,6 +1177,8 @@ fn recordCommandBuffer(
     graphics_pipeline: c.VkPipeline,
     vertex_buffer: c.VkBuffer,
     index_buffer: c.VkBuffer,
+    descriptor_set: *c.VkDescriptorSet,
+    pipeline_layout: c.VkPipelineLayout,
 ) void {
     const begin_info = c.VkCommandBufferBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1185,6 +1235,17 @@ fn recordCommandBuffer(
         .extent = swapchain_extent,
     };
     c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+    c.vkCmdBindDescriptorSets(
+        command_buffer,
+        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        pipeline_layout,
+        0,
+        1,
+        descriptor_set,
+        0,
+        null,
+    );
 
     c.vkCmdDrawIndexed(command_buffer, indices.len, 1, 0, 0, 0);
 
@@ -1252,6 +1313,8 @@ fn drawFrame(
     indices_buffer: c.VkBuffer,
     uniform_buffer_mapped: *anyopaque,
     start_time: i64,
+    descriptor_set: *c.VkDescriptorSet,
+    pipeline_layout: c.VkPipelineLayout,
 ) void {
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
     fatalIfNotSuccess(wait_res, "Failed waiting for fences");
@@ -1303,11 +1366,13 @@ fn drawFrame(
         graphics_pipeline,
         vertex_buffer,
         indices_buffer,
+        descriptor_set,
+        pipeline_layout,
     );
 
     const current_time = std.time.milliTimestamp();
     const time = current_time - start_time;
-    const angle: f32 = @floatFromInt(@divFloor(time, 1000));
+    const angle: f32 = @as(f32, @floatFromInt(time)) / 500;
     const ubo = UniformBufferObject{
         // rotation in the x-y plane
         .model = linalg.Mat4(f32).new(
