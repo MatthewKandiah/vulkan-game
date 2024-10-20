@@ -309,8 +309,8 @@ pub fn main() void {
         .pNext = null,
         .flags = 0,
     };
-    const binding_description = Vertex.getBindingDescription(); // TODO
-    const attribute_descriptions = Vertex.getAttributeDescriptions(); // TODO
+    const binding_description = Vertex.getBindingDescription();
+    const attribute_descriptions = Vertex.getAttributeDescriptions();
     const pipeline_vertex_input_create_info = c.VkPipelineVertexInputStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 1,
@@ -1021,7 +1021,7 @@ fn createFramebuffers(
 }
 
 fn createShaderModule(comptime shader: []const u8, logical_device: c.VkDevice) c.VkShaderModule {
-    // TODO - this smells very system dependent
+    // NOTE - this smells very system dependent
     //        presumably there's some way to sniff out the endianess we're going to write the shader to file with
     //        then we could make this more sane
     //        alternatively, the glslc people also have a library that let's you compile shaders at runtime
@@ -1080,7 +1080,7 @@ fn drawFrame(
     descriptor_set: *c.VkDescriptorSet,
     pipeline_layout: c.VkPipelineLayout,
 ) void {
-    // TODO - need to remind myself why we're waiting here
+    // before we start drawing this frame, we want to wait until the previous frame has finished drawing, or state will bleed from one frame into the next
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
     fatalIfNotSuccess(wait_res, "Failed waiting for fences");
 
@@ -1117,7 +1117,6 @@ fn drawFrame(
         fatalIfNotSuccess(acquire_image_res, "Failed to acquire next image");
     }
 
-    // TODO - double check why this is needed too
     // If we don't reset the fence now, then the next call to drawFrame won't wait at the start as expected
     const reset_fence_res = c.vkResetFences(logical_device, 1, in_flight_fence_ptr);
     fatalIfNotSuccess(reset_fence_res, "Failed to reset fences");
@@ -1138,7 +1137,6 @@ fn drawFrame(
         .color = .{ .float32 = .{ 0, 0, 0, 1 } },
     };
 
-    // TODO - check this
     // start render pass - we're about to start processing graphics commands
     const render_pass_info = c.VkRenderPassBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -1182,7 +1180,9 @@ fn drawFrame(
     };
     c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    // TODO - don't actually understand what this bit is
+    // a descriptor is an opaque data structure representing a shader resource (e.g. a buffer, image view, sampler, etc.)
+    // descriptors are orgnanised into descriptor sets, this is literally just one or more descriptors stored in an opaque object
+    // binding the descriptor set just means it will be used in the subsequent draw commands
     c.vkCmdBindDescriptorSets(
         command_buffer,
         c.VK_PIPELINE_BIND_POINT_GRAPHICS,
