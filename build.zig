@@ -20,6 +20,8 @@ pub fn build(b: *std.Build) !void {
     exe.linkLibC();
     exe.linkSystemLibrary("glfw");
     exe.linkSystemLibrary("vulkan");
+    exe.addIncludePath(b.path("vendor"));
+    exe.addCSourceFile(.{ .file = .{ .src_path = .{ .owner = b, .sub_path = "vendor/stb_image_impl.c" } } });
     b.installArtifact(exe);
 }
 
