@@ -43,6 +43,9 @@ fn framebufferResizedCallback(_: *c.GLFWwindow, _: i32, _: i32) void {
     framebuffer_resized = true;
 }
 
+// TODO - createBuffer helper function
+// TODO - createImage helper function
+
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -415,6 +418,97 @@ pub fn main() void {
     var command_pool: c.VkCommandPool = undefined;
     const pool_create_res = c.vkCreateCommandPool(logical_device, &pool_create_info, null, &command_pool);
     fatalIfNotSuccess(pool_create_res, "Failed to create command pool");
+
+    // create texture image staging buffer
+    var tex_width: i32 = undefined;
+    var tex_height: i32 = undefined;
+    var tex_channels: i32 = undefined;
+    const tex_pixels = c.stbi_load(
+        "textures/texture.jpg",
+        &tex_width,
+        &tex_height,
+        &tex_channels,
+        c.STBI_rgb_alpha,
+    );
+    if (tex_pixels == 0) {
+        fatal("Failed to load texture image");
+    }
+    const tex_image_size = tex_width * tex_height * 4;
+    var tex_staging_buffer: c.VkBuffer = undefined;
+    var tex_staging_buffer_memory: c.VkDeviceMemory = undefined;
+    const create_tex_staging_buffer_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = @intCast(tex_image_size),
+        .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+    };
+    const create_tex_staging_buffer_res = c.vkCreateBuffer(logical_device, &create_tex_staging_buffer_info, null, &tex_staging_buffer);
+    fatalIfNotSuccess(create_tex_staging_buffer_res, "Failed to create texture staging buffer");
+    var tex_staging_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(logical_device, tex_staging_buffer, &tex_staging_buffer_mem_requirements);
+    const tex_staging_buffer_alloc_info = c.VkMemoryAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = tex_staging_buffer_mem_requirements.size,
+        .memoryTypeIndex = findMemoryType(
+            physical_device,
+            tex_staging_buffer_mem_requirements.memoryTypeBits,
+            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        ),
+    };
+    const tex_staging_buffer_alloc_res = c.vkAllocateMemory(logical_device, &tex_staging_buffer_alloc_info, null, &tex_staging_buffer_memory);
+    fatalIfNotSuccess(tex_staging_buffer_alloc_res, "Failed to allocated texture staging buffer memory");
+    const bind_tex_staging_buffer_memory_res = c.vkBindBufferMemory(logical_device, tex_staging_buffer, tex_staging_buffer_memory, 0);
+    fatalIfNotSuccess(bind_tex_staging_buffer_memory_res, "Failed to bind texture staging buffer memory");
+
+    // copy image data into texture staging buffer
+    var tex_image_data: *anyopaque = undefined;
+    const tex_image_map_memory_res = c.vkMapMemory(
+        logical_device,
+        tex_staging_buffer_memory,
+        0,
+        @intCast(tex_image_size),
+        0,
+        @alignCast(@ptrCast(&tex_image_data)),
+    );
+    fatalIfNotSuccess(tex_image_map_memory_res, "Failed to map texture image memory");
+    std.mem.copyForwards(u8, @as([*]u8, @alignCast(@ptrCast(tex_image_data)))[0..@intCast(tex_image_size)], tex_pixels[0..@intCast(tex_image_size)]);
+    c.vkUnmapMemory(logical_device, tex_staging_buffer_memory);
+    c.stbi_image_free(tex_pixels);
+
+    // create texture image
+    var texture_image: c.VkImage = undefined;
+    var texture_image_memory: c.VkDeviceMemory = undefined;
+    const create_texture_image_info = c.VkImageCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = c.VK_IMAGE_VIEW_TYPE_2D,
+        .extent = .{ .width = @intCast(tex_width), .height = @intCast(tex_height), .depth = 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = c.VK_FORMAT_R8G8B8A8_SRGB,
+        .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .flags = 0,
+    };
+    const create_texture_image_res = c.vkCreateImage(logical_device, &create_texture_image_info, null, &texture_image);
+    fatalIfNotSuccess(create_texture_image_res, "Failed to create texture image");
+    var texture_image_mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetImageMemoryRequirements(logical_device, texture_image, &texture_image_mem_requirements);
+    const texture_image_alloc_info = c.VkMemoryAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = texture_image_mem_requirements.size,
+        .memoryTypeIndex = findMemoryType(
+            physical_device,
+            texture_image_mem_requirements.memoryTypeBits,
+            c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        ),
+    };
+    const texture_image_alloc_res = c.vkAllocateMemory(logical_device, &texture_image_alloc_info, null, &texture_image_memory);
+    fatalIfNotSuccess(texture_image_alloc_res, "Failed to allocate image memory");
+    const texture_image_memory_bind_res = c.vkBindImageMemory(logical_device, texture_image, texture_image_memory, 0);
+    fatalIfNotSuccess(texture_image_memory_bind_res, "Failed to bind image memory");
 
     // create vertex staging buffer
     const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
