@@ -1484,14 +1484,7 @@ fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, propert
     fatal("Failed to find suitable memory type");
 }
 
-fn copyBuffer(
-    logical_device: c.VkDevice,
-    command_pool: c.VkCommandPool,
-    graphics_queue: c.VkQueue,
-    src_buffer: c.VkBuffer,
-    dst_buffer: c.VkBuffer,
-    size: c.VkDeviceSize,
-) void {
+fn beginSingleTimeCommands(logical_device: c.VkDevice, command_pool: c.VkCommandPool) c.VkCommandBuffer {
     const command_buffer_alloc_info = c.VkCommandBufferAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -1500,14 +1493,51 @@ fn copyBuffer(
     };
     var command_buffer: c.VkCommandBuffer = undefined;
     const command_buffer_alloc_res = c.vkAllocateCommandBuffers(logical_device, &command_buffer_alloc_info, &command_buffer);
-    fatalIfNotSuccess(command_buffer_alloc_res, "Failed to allocate temporary copy command buffer");
+    fatalIfNotSuccess(command_buffer_alloc_res, "Failed to allocate single use command buffer");
 
     const command_buffer_begin_info = c.VkCommandBufferBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
-    const begin_res = c.vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-    fatalIfNotSuccess(begin_res, "Failed to begin temporary command buffer");
+
+    const begin_command_buffer_res = c.vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+    fatalIfNotSuccess(begin_command_buffer_res, "Failed to begin single use command buffer");
+
+    return command_buffer;
+}
+
+fn endSingleTimeCommands(
+    logical_device: c.VkDevice,
+    command_pool: c.VkCommandPool,
+    graphics_queue: c.VkQueue,
+    command_buffer: c.VkCommandBuffer,
+) void {
+    const end_command_buffer_res = c.vkEndCommandBuffer(command_buffer);
+    fatalIfNotSuccess(end_command_buffer_res, "Failed to end single use command buffer");
+
+    const submit_info = c.VkSubmitInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+    const submit_res = c.vkQueueSubmit(graphics_queue, 1, &submit_info, null);
+    fatalIfNotSuccess(submit_res, "Failed to submit single use command buffer");
+
+    const wait_res = c.vkQueueWaitIdle(graphics_queue);
+    fatalIfNotSuccess(wait_res, "Failed to wait for graphics queue idle");
+
+    c.vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
+}
+
+fn copyBuffer(
+    logical_device: c.VkDevice,
+    command_pool: c.VkCommandPool,
+    graphics_queue: c.VkQueue,
+    src_buffer: c.VkBuffer,
+    dst_buffer: c.VkBuffer,
+    size: c.VkDeviceSize,
+) void {
+    const command_buffer = beginSingleTimeCommands(logical_device, command_pool);
 
     const copy_region = c.VkBufferCopy{
         .srcOffset = 0,
@@ -1515,21 +1545,58 @@ fn copyBuffer(
         .size = size,
     };
     c.vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
-    const end_res = c.vkEndCommandBuffer(command_buffer);
-    fatalIfNotSuccess(end_res, "Failed to end temporary command buffer");
 
-    const submit_info = c.VkSubmitInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &command_buffer,
-    };
-    const submit_res = c.vkQueueSubmit(graphics_queue, 1, &submit_info, null);
-    fatalIfNotSuccess(submit_res, "Failed to submit copy to queue");
-    const wait_res = c.vkQueueWaitIdle(graphics_queue);
-    fatalIfNotSuccess(wait_res, "Failed waiting for copy to complete");
-
-    c.vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
+    endSingleTimeCommands(logical_device, command_pool, graphics_queue, command_buffer);
 }
+
+fn transitionImageLayout(
+    logical_device: c.VkDevice,
+    command_pool: c.VkCommandPool,
+    graphics_queue: c.VkQueue,
+    image: c.VkImage,
+    format: c.VkFormat,
+    old_layout: c.VkImageLayout,
+    new_layout: c.VkImageLayout,
+) void {
+    const command_buffer = beginSingleTimeCommands(logical_device, command_pool);
+
+    _ = format; // TODO - needed for "special transitions in the depth buffer chapter", kept to keep in-sync with the tutorial
+
+    const barrier = c.VkImageMemoryBarrier{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcAccessMask = 0,
+        .dstAccessMask = 0,
+    };
+
+    c.vkCmdPipelineBarrier(
+        command_buffer,
+        0,
+        0,
+        0,
+        0,
+        null,
+        0,
+        null,
+        1,
+        &barrier,
+    );
+
+    endSingleTimeCommands(logical_device, command_pool, graphics_queue, command_buffer);
+}
+
+// TODO - continue from Copying Buffer to Image
 
 const Vertex = extern struct {
     pos: linalg.Vec2(f32),
