@@ -279,13 +279,21 @@ pub fn main() void {
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
         .pImmutableSamplers = null,
     };
-    var ubo_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+    const sampler_descriptor_set_layout_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 1,
+        .descriptorCount = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImmutableSamplers = null,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+    const descriptor_set_bindings = [_]c.VkDescriptorSetLayoutBinding{ ubo_descriptor_set_layout_binding, sampler_descriptor_set_layout_binding };
+    var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
     const ubo_descriptor_set_layout_create_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &ubo_descriptor_set_layout_binding,
+        .bindingCount = descriptor_set_bindings.len,
+        .pBindings = &descriptor_set_bindings,
     };
-    const ubo_descriptor_set_layout_create_res = c.vkCreateDescriptorSetLayout(logical_device, &ubo_descriptor_set_layout_create_info, null, &ubo_descriptor_set_layout);
+    const ubo_descriptor_set_layout_create_res = c.vkCreateDescriptorSetLayout(logical_device, &ubo_descriptor_set_layout_create_info, null, &descriptor_set_layout);
     fatalIfNotSuccess(ubo_descriptor_set_layout_create_res, "Failed to create descriptor set layout");
 
     // create graphics pipeline
@@ -377,7 +385,7 @@ pub fn main() void {
     const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
-        .pSetLayouts = &ubo_descriptor_set_layout,
+        .pSetLayouts = &descriptor_set_layout,
     };
     const pipeline_layout_create_res = c.vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info, null, &pipeline_layout);
     fatalIfNotSuccess(pipeline_layout_create_res, "Failed to create pipeline layout");
@@ -792,14 +800,19 @@ pub fn main() void {
     }
 
     // create descriptor pool
-    const descriptor_pool_size = c.VkDescriptorPoolSize{
+    const ubo_descriptor_pool_size = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = MAX_FRAMES_IN_FLIGHT,
     };
+    const image_sampler_pool_size = c.VkDescriptorPoolSize{
+        .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+    };
+    const pool_sizes = [_]c.VkDescriptorPoolSize{ ubo_descriptor_pool_size, image_sampler_pool_size };
     const descriptor_pool_create_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .poolSizeCount = 1,
-        .pPoolSizes = &descriptor_pool_size,
+        .poolSizeCount = pool_sizes.len,
+        .pPoolSizes = &pool_sizes,
         .maxSets = MAX_FRAMES_IN_FLIGHT,
     };
     var descriptor_pool: c.VkDescriptorPool = undefined;
@@ -807,7 +820,7 @@ pub fn main() void {
     fatalIfNotSuccess(descriptor_pool_create_res, "Failed to create descriptor pool");
 
     // create descriptor sets
-    const descriptor_set_layouts = [MAX_FRAMES_IN_FLIGHT]c.VkDescriptorSetLayout{ ubo_descriptor_set_layout, ubo_descriptor_set_layout };
+    const descriptor_set_layouts = [MAX_FRAMES_IN_FLIGHT]c.VkDescriptorSetLayout{ descriptor_set_layout, descriptor_set_layout };
     const descriptor_set_allocate_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = descriptor_pool,
@@ -823,7 +836,12 @@ pub fn main() void {
             .offset = 0,
             .range = @sizeOf(UniformBufferObject),
         };
-        const write_descriptor_set = c.VkWriteDescriptorSet{
+        const descriptor_image_info = c.VkDescriptorImageInfo{
+            .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = texture_image_view,
+            .sampler = texture_sampler,
+        };
+        const ubo_write_descriptor_set = c.VkWriteDescriptorSet{
             .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = descriptor_sets[i],
             .dstBinding = 0,
@@ -832,7 +850,23 @@ pub fn main() void {
             .descriptorCount = 1,
             .pBufferInfo = &descriptor_buffer_info,
         };
-        c.vkUpdateDescriptorSets(logical_device, 1, &write_descriptor_set, 0, null);
+        const sampler_write_descriptor_set = c.VkWriteDescriptorSet{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = descriptor_sets[i],
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .pImageInfo = &descriptor_image_info,
+        };
+        const descriptor_writes = [_]c.VkWriteDescriptorSet{ ubo_write_descriptor_set, sampler_write_descriptor_set };
+        c.vkUpdateDescriptorSets(
+            logical_device,
+            descriptor_writes.len,
+            &descriptor_writes,
+            0,
+            null,
+        );
     }
 
     // create command buffers
@@ -925,7 +959,7 @@ pub fn main() void {
         c.vkFreeMemory(logical_device, uniform_buffers_memory[i], null);
     }
     c.vkDestroyDescriptorPool(logical_device, descriptor_pool, null);
-    c.vkDestroyDescriptorSetLayout(logical_device, ubo_descriptor_set_layout, null);
+    c.vkDestroyDescriptorSetLayout(logical_device, descriptor_set_layout, null);
     c.vkDestroyBuffer(logical_device, vertex_buffer, null);
     c.vkFreeMemory(logical_device, vertex_buffer_memory, null);
     c.vkDestroyBuffer(logical_device, index_buffer, null);
