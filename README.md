@@ -3,5 +3,5 @@ Just curious how hard Vulkan is to get up and running compared to OpenGL --- We'
 Following the [Khronos Vulkan tutorial](https://docs.vulkan.org/tutorial/latest/00_Introduction.html), but using Zig instead of C++ because we're here for a good time.
 
 ## TODO
-- Continue from [Images](https://docs.vulkan.org/tutorial/latest/06_Texture_mapping/00_Images.html)
+- Continue from [Image view and sampler](https://docs.vulkan.org/tutorial/latest/06_Texture_mapping/01_Image_view_and_sampler.html)
 
