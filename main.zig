@@ -539,6 +539,10 @@ pub fn main() void {
         c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     );
 
+    // cleanup texture staging buffer and resources
+    c.vkDestroyBuffer(logical_device, tex_staging_buffer, null);
+    c.vkFreeMemory(logical_device, tex_staging_buffer_memory, null);
+
     // create vertex staging buffer
     const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
     var vertex_staging_buffer: c.VkBuffer = undefined;
@@ -863,6 +867,8 @@ pub fn main() void {
         swapchain_image_views,
         swapchain_images,
     );
+    c.vkDestroyImage(logical_device, texture_image, null);
+    c.vkFreeMemory(logical_device, texture_image_memory, null);
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         c.vkDestroyBuffer(logical_device, uniform_buffers[i], null);
         c.vkFreeMemory(logical_device, uniform_buffers_memory[i], null);
@@ -1545,7 +1551,7 @@ fn endSingleTimeCommands(
     fatalIfNotSuccess(end_command_buffer_res, "Failed to end single use command buffer");
 
     const submit_info = c.VkSubmitInfo{
-        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1,
         .pCommandBuffers = &command_buffer,
     };
@@ -1592,7 +1598,7 @@ fn transitionImageLayout(
 
     _ = format; // TODO - needed for "special transitions in the depth buffer chapter", kept to keep in-sync with the tutorial
 
-    const barrier = c.VkImageMemoryBarrier{
+    var barrier = c.VkImageMemoryBarrier{
         .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = old_layout,
         .newLayout = new_layout,
@@ -1610,10 +1616,26 @@ fn transitionImageLayout(
         .dstAccessMask = 0,
     };
 
+    var source_stage: c.VkPipelineStageFlags = undefined;
+    var destination_stage: c.VkPipelineStageFlags = undefined;
+    if (old_layout == c.VK_IMAGE_LAYOUT_UNDEFINED and new_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = c.VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        source_stage = c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and new_layout == c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT;
+        source_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        std.debug.panic("Unsupported image layout transition from\n{}\nto\n{}\n\n", .{ old_layout, new_layout });
+    }
+
     c.vkCmdPipelineBarrier(
         command_buffer,
-        0,
-        0,
+        source_stage,
+        destination_stage,
         0,
         0,
         null,
