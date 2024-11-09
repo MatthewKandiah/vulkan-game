@@ -144,7 +144,9 @@ pub fn main() void {
     for (physical_devices) |physical_device| {
         const extensions_supported = checkDeviceExtensionSupport(allocator, physical_device);
         const queue_family_indices = findQueueFamilies(allocator, physical_device, surface);
-        if (queue_family_indices.isComplete() and extensions_supported) {
+        var supported_features: c.VkPhysicalDeviceFeatures = undefined;
+        c.vkGetPhysicalDeviceFeatures(physical_device, &supported_features);
+        if (queue_family_indices.isComplete() and extensions_supported and supported_features.samplerAnisotropy != 0) {
             var swapchain_capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
             _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &swapchain_capabilities);
             var surface_format_count: u32 = undefined;
@@ -183,7 +185,9 @@ pub fn main() void {
         present_queue_create_info,
     };
     const queue_create_info_count: u32 = if (queue_family_indices.graphics_family.? == queue_family_indices.present_family.?) 1 else 2;
-    const physical_device_features = std.mem.zeroes(c.VkPhysicalDeviceFeatures);
+    const physical_device_features = c.VkPhysicalDeviceFeatures{
+        .samplerAnisotropy = c.VK_TRUE,
+    };
     const device_create_info = c.VkDeviceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pQueueCreateInfos = &queue_create_infos,
@@ -562,6 +566,32 @@ pub fn main() void {
     const texture_image_view_create_res = c.vkCreateImageView(logical_device, &texture_image_view_create_info, null, &texture_image_view);
     fatalIfNotSuccess(texture_image_view_create_res, "Failed to create texture image view");
 
+    // create texture sampler
+    var physical_device_properties: c.VkPhysicalDeviceProperties = undefined;
+    c.vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
+
+    const texture_sampler_create_info = c.VkSamplerCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = c.VK_FILTER_LINEAR,
+        .minFilter = c.VK_FILTER_LINEAR,
+        .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .anisotropyEnable = c.VK_TRUE,
+        .maxAnisotropy = physical_device_properties.limits.maxSamplerAnisotropy,
+        .borderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = c.VK_FALSE,
+        .compareEnable = c.VK_FALSE,
+        .compareOp = c.VK_COMPARE_OP_ALWAYS,
+        .mipmapMode = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .mipLodBias = 0,
+        .minLod = 0,
+        .maxLod = 0,
+    };
+    var texture_sampler: c.VkSampler = undefined;
+    const texture_sampler_create_res = c.vkCreateSampler(logical_device, &texture_sampler_create_info, null, &texture_sampler);
+    fatalIfNotSuccess(texture_sampler_create_res, "Failed to create texture sampler");
+
     // create vertex staging buffer
     const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
     var vertex_staging_buffer: c.VkBuffer = undefined;
@@ -886,6 +916,7 @@ pub fn main() void {
         swapchain_image_views,
         swapchain_images,
     );
+    c.vkDestroySampler(logical_device, texture_sampler, null);
     c.vkDestroyImageView(logical_device, texture_image_view, null);
     c.vkDestroyImage(logical_device, texture_image, null);
     c.vkFreeMemory(logical_device, texture_image_memory, null);
