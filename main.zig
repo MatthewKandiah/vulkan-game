@@ -510,6 +510,35 @@ pub fn main() void {
     const texture_image_memory_bind_res = c.vkBindImageMemory(logical_device, texture_image, texture_image_memory, 0);
     fatalIfNotSuccess(texture_image_memory_bind_res, "Failed to bind image memory");
 
+    // copy image data from staging buffer into texture image
+    transitionImageLayout(
+        logical_device,
+        command_pool,
+        graphics_queue,
+        texture_image,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_LAYOUT_UNDEFINED,
+        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    );
+    copyBufferToImage(
+        logical_device,
+        command_pool,
+        graphics_queue,
+        tex_staging_buffer,
+        texture_image,
+        @intCast(tex_width),
+        @intCast(tex_height),
+    );
+    transitionImageLayout(
+        logical_device,
+        command_pool,
+        graphics_queue,
+        texture_image,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    );
+
     // create vertex staging buffer
     const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
     var vertex_staging_buffer: c.VkBuffer = undefined;
@@ -1549,6 +1578,7 @@ fn copyBuffer(
     endSingleTimeCommands(logical_device, command_pool, graphics_queue, command_buffer);
 }
 
+// TODO - forgotten what this is actually doing
 fn transitionImageLayout(
     logical_device: c.VkDevice,
     command_pool: c.VkCommandPool,
@@ -1596,7 +1626,32 @@ fn transitionImageLayout(
     endSingleTimeCommands(logical_device, command_pool, graphics_queue, command_buffer);
 }
 
-// TODO - continue from Copying Buffer to Image
+fn copyBufferToImage(
+    logical_device: c.VkDevice,
+    command_pool: c.VkCommandPool,
+    graphics_queue: c.VkQueue,
+    buffer: c.VkBuffer,
+    image: c.VkImage,
+    width: u32,
+    height: u32,
+) void {
+    const command_buffer = beginSingleTimeCommands(logical_device, command_pool);
+    const buffer_image_copy_region = c.VkBufferImageCopy{
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
+        .imageExtent = .{ .width = width, .height = height, .depth = 1 },
+    };
+    c.vkCmdCopyBufferToImage(command_buffer, buffer, image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy_region);
+    endSingleTimeCommands(logical_device, command_pool, graphics_queue, command_buffer);
+}
 
 const Vertex = extern struct {
     pos: linalg.Vec2(f32),
