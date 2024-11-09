@@ -5,3 +5,6 @@ Following the [Khronos Vulkan tutorial](https://docs.vulkan.org/tutorial/latest/
 ## TODO
 - Continue from [Image view and sampler](https://docs.vulkan.org/tutorial/latest/06_Texture_mapping/01_Image_view_and_sampler.html)
 
+
+## References
+- Vulkan Spec https://docs.vulkan.org/guide/latest/vulkan_spec.html
