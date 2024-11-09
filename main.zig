@@ -45,6 +45,7 @@ fn framebufferResizedCallback(_: *c.GLFWwindow, _: i32, _: i32) void {
 
 // TODO - createBuffer helper function
 // TODO - createImage helper function
+// TODO - createImageView helper function
 
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -543,6 +544,24 @@ pub fn main() void {
     c.vkDestroyBuffer(logical_device, tex_staging_buffer, null);
     c.vkFreeMemory(logical_device, tex_staging_buffer_memory, null);
 
+    // create texture image view
+    var texture_image_view: c.VkImageView = undefined;
+    const texture_image_view_create_info = c.VkImageViewCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = texture_image,
+        .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+        .format = c.VK_FORMAT_R8G8B8A8_SRGB,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+    const texture_image_view_create_res = c.vkCreateImageView(logical_device, &texture_image_view_create_info, null, &texture_image_view);
+    fatalIfNotSuccess(texture_image_view_create_res, "Failed to create texture image view");
+
     // create vertex staging buffer
     const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
     var vertex_staging_buffer: c.VkBuffer = undefined;
@@ -867,6 +886,7 @@ pub fn main() void {
         swapchain_image_views,
         swapchain_images,
     );
+    c.vkDestroyImageView(logical_device, texture_image_view, null);
     c.vkDestroyImage(logical_device, texture_image, null);
     c.vkFreeMemory(logical_device, texture_image_memory, null);
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
