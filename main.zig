@@ -35,10 +35,10 @@ const vertices = [_]Vertex{
     Vertex.new(0.5, 0.5, 0, 0, 0, 1, 0, 1),
     Vertex.new(-0.5, 0.5, 0, 1, 1, 1, 1, 1),
     // second square
-    Vertex.new(-0.3, -0.3, -0.5, 1, 0, 0, 1, 0),
-    Vertex.new(0.3, -0.3, -0.5, 0, 1, 0, 0, 0),
-    Vertex.new(0.3, 0.3, -0.5, 0, 0, 1, 0, 1),
-    Vertex.new(-0.3, 0.3, -0.5, 1, 1, 1, 1, 1),
+    Vertex.new(-0.5, -0.5, -7.5, 1, 0, 0, 1, 0),
+    Vertex.new(0.5, -0.5, -7.5, 0, 1, 0, 0, 0),
+    Vertex.new(0.5, 0.5, -7.5, 0, 0, 1, 0, 1),
+    Vertex.new(-0.5, 0.5, -7.5, 1, 1, 1, 1, 1),
 };
 
 const indices = [_]u32{
@@ -1437,21 +1437,22 @@ fn drawFrame(
     const current_time_millis = std.time.milliTimestamp();
     const time_millis = current_time_millis - start_time;
     const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
+    const camera_z_displacement = 3;
     const ubo = UniformBufferObject{
         // rotation in the x-y plane
         .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
         // move the space forward == move the camera back
         .view = linalg.Mat4(f32).rigidBodyTransform(
-            linalg.degreesToRadians(45),
+            linalg.degreesToRadians(2),
             linalg.Vec3(f32).new(1, 0, 0),
-            linalg.Vec3(f32).new(0, 0, 3),
+            linalg.Vec3(f32).new(0, 0, camera_z_displacement),
         ),
         // simple projection
         .proj = linalg.Mat4(f32).new(
             linalg.Vec4(f32).new(1, 0, 0, 0),
             linalg.Vec4(f32).new(0, 1, 0, 0),
             linalg.Vec4(f32).new(0, 0, 0, 0),
-            linalg.Vec4(f32).new(0, 0, 0, 1),
+            linalg.Vec4(f32).new(0, 0, -1 / camera_z_displacement, 1),
         ),
     };
     std.mem.copyForwards(UniformBufferObject, @as([*]UniformBufferObject, @alignCast(@ptrCast(uniform_buffer_mapped)))[0..1], &.{ubo});
