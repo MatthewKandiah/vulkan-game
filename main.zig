@@ -1,5 +1,8 @@
 const std = @import("std");
 const linalg = @import("./linalg.zig");
+const fatal = @import("./fatal.zig").fatal;
+const fatalQuiet = @import("./fatal.zig").fatalQuiet;
+const fatalIfNotSuccess = @import("./fatal.zig").fatalIfNotSuccess;
 
 const c = @cImport({
     @cDefine("GLFW_INCLUDE_VULKAN", {});
@@ -39,10 +42,10 @@ const vertices = [_]Vertex{
 };
 
 const indices = [_]u32{
-    // second square
-    4, 5, 6, 6, 7, 4,
     // first square
     0, 1, 2, 2, 3, 0,
+    // second square
+    4, 5, 6, 6, 7, 4,
 };
 
 const MAX_FRAMES_IN_FLIGHT = 2;
@@ -1433,23 +1436,15 @@ fn drawFrame(
     // use time elapsed to get a different angle for each frame
     const current_time_millis = std.time.milliTimestamp();
     const time_millis = current_time_millis - start_time;
-    _ = time_millis;
-    const angle = @as(f32, 0);
-    // const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
+    const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
     const ubo = UniformBufferObject{
         // rotation in the x-y plane
-        .model = linalg.Mat4(f32).new(
-            linalg.Vec4(f32).new(@cos(angle), @sin(angle), 0, 0),
-            linalg.Vec4(f32).new(-@sin(angle), @cos(angle), 0, 0),
-            linalg.Vec4(f32).new(0, 0, 1, 0),
-            linalg.Vec4(f32).new(0, 0, 0, 1),
-        ),
+        .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
         // move the space forward == move the camera back
-        .view = linalg.Mat4(f32).new(
-            linalg.Vec4(f32).new(1, 0, 0, 0),
-            linalg.Vec4(f32).new(0, 1, 0, 0),
-            linalg.Vec4(f32).new(0, 0, 1, -2),
-            linalg.Vec4(f32).new(0, 0, 0, 1),
+        .view = linalg.Mat4(f32).rigidBodyTransform(
+            linalg.degreesToRadians(45),
+            linalg.Vec3(f32).new(1, 0, 0),
+            linalg.Vec3(f32).new(0, 0, 3),
         ),
         // simple projection
         .proj = linalg.Mat4(f32).new(
@@ -1824,19 +1819,3 @@ const UniformBufferObject = extern struct {
     view: linalg.Mat4(f32),
     proj: linalg.Mat4(f32),
 };
-
-fn fatal(comptime mess: []const u8) noreturn {
-    std.debug.print(mess, .{});
-    std.process.exit(1);
-}
-
-fn fatalQuiet() noreturn {
-    fatal("");
-}
-
-fn fatalIfNotSuccess(res: c.VkResult, comptime mess: []const u8) void {
-    if (res != c.VK_SUCCESS) {
-        std.debug.print("res: {}\n", .{res});
-        fatal(mess);
-    }
-}
