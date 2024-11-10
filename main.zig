@@ -26,10 +26,10 @@ const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
 const vertices = [_]Vertex{
-    Vertex.new(-0.5, -0.5, 1, 0, 0),
-    Vertex.new(0.5, -0.5, 0, 1, 0),
-    Vertex.new(0.5, 0.5, 0, 0, 1),
-    Vertex.new(-0.5, 0.5, 1, 1, 1),
+    Vertex.new(-0.5, -0.5, 1, 0, 0, 1, 0),
+    Vertex.new(0.5, -0.5, 0, 1, 0, 0, 0),
+    Vertex.new(0.5, 0.5, 0, 0, 1, 0, 1),
+    Vertex.new(-0.5, 0.5, 1, 1, 1, 1, 1),
 };
 
 const indices = [_]u32{ 0, 1, 2, 2, 3, 0 };
@@ -1763,13 +1763,15 @@ fn copyBufferToImage(
 const Vertex = extern struct {
     pos: linalg.Vec2(f32),
     color: linalg.Vec3(f32),
+    tex_coord: linalg.Vec2(f32),
 
     const Self = @This();
 
-    fn new(x: f32, y: f32, r: f32, g: f32, b: f32) Self {
+    fn new(x: f32, y: f32, r: f32, g: f32, b: f32, u: f32, v: f32) Self {
         return Self{
             .pos = linalg.Vec2(f32).new(x, y),
             .color = linalg.Vec3(f32).new(r, g, b),
+            .tex_coord = linalg.Vec2(f32).new(u, v),
         };
     }
 
@@ -1781,20 +1783,26 @@ const Vertex = extern struct {
         };
     }
 
-    fn getAttributeDescriptions() [2]c.VkVertexInputAttributeDescription {
-        const positionAttributeDescription = c.VkVertexInputAttributeDescription{
+    fn getAttributeDescriptions() [3]c.VkVertexInputAttributeDescription {
+        const position_attribute_description = c.VkVertexInputAttributeDescription{
             .binding = 0,
             .location = 0,
             .format = c.VK_FORMAT_R32G32_SFLOAT,
             .offset = @offsetOf(Vertex, "pos"),
         };
-        const colorAttributeDescription = c.VkVertexInputAttributeDescription{
+        const color_attribute_description = c.VkVertexInputAttributeDescription{
             .binding = 0,
             .location = 1,
             .format = c.VK_FORMAT_R32G32B32_SFLOAT,
             .offset = @offsetOf(Vertex, "color"),
         };
-        return .{ positionAttributeDescription, colorAttributeDescription };
+        const tex_coord_attribute_description = c.VkVertexInputAttributeDescription{
+            .binding = 0,
+            .location = 2,
+            .format = c.VK_FORMAT_R32G32_SFLOAT,
+            .offset = @offsetOf(Vertex, "tex_coord"),
+        };
+        return .{ position_attribute_description, color_attribute_description, tex_coord_attribute_description };
     }
 };
 
