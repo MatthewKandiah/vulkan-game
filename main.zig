@@ -445,7 +445,7 @@ pub fn main() void {
     // create depth resources
     // TODO
 
-    // create texture image staging buffer
+    // read in texture image
     var tex_width: i32 = undefined;
     var tex_height: i32 = undefined;
     var tex_channels: i32 = undefined;
@@ -459,6 +459,8 @@ pub fn main() void {
     if (tex_pixels == 0) {
         fatal("Failed to load texture image");
     }
+
+    // create texture image staging buffer
     const tex_image_size = tex_width * tex_height * 4;
     const tex_staging_buffer_create_res = createBuffer(
         physical_device,
@@ -486,39 +488,18 @@ pub fn main() void {
     c.stbi_image_free(tex_pixels);
 
     // create texture image
-    var texture_image: c.VkImage = undefined;
-    var texture_image_memory: c.VkDeviceMemory = undefined;
-    const create_texture_image_info = c.VkImageCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = c.VK_IMAGE_VIEW_TYPE_2D,
-        .extent = .{ .width = @intCast(tex_width), .height = @intCast(tex_height), .depth = 1 },
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .format = c.VK_FORMAT_R8G8B8A8_SRGB,
-        .tiling = c.VK_IMAGE_TILING_OPTIMAL,
-        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-        .samples = c.VK_SAMPLE_COUNT_1_BIT,
-        .flags = 0,
-    };
-    const create_texture_image_res = c.vkCreateImage(logical_device, &create_texture_image_info, null, &texture_image);
-    fatalIfNotSuccess(create_texture_image_res, "Failed to create texture image");
-    var texture_image_mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetImageMemoryRequirements(logical_device, texture_image, &texture_image_mem_requirements);
-    const texture_image_alloc_info = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = texture_image_mem_requirements.size,
-        .memoryTypeIndex = findMemoryType(
-            physical_device,
-            texture_image_mem_requirements.memoryTypeBits,
-            c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        ),
-    };
-    const texture_image_alloc_res = c.vkAllocateMemory(logical_device, &texture_image_alloc_info, null, &texture_image_memory);
-    fatalIfNotSuccess(texture_image_alloc_res, "Failed to allocate image memory");
-    const texture_image_memory_bind_res = c.vkBindImageMemory(logical_device, texture_image, texture_image_memory, 0);
-    fatalIfNotSuccess(texture_image_memory_bind_res, "Failed to bind image memory");
+    const texture_image_create_res = createImage(
+        physical_device,
+        logical_device,
+        @intCast(tex_width),
+        @intCast(tex_height),
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_TILING_OPTIMAL,
+        c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+    const texture_image = texture_image_create_res.image;
+    const texture_image_memory = texture_image_create_res.memory;
 
     // copy image data from staging buffer into texture image
     transitionImageLayout(
@@ -944,7 +925,61 @@ fn createBuffer(
     };
 }
 
-// TODO - createImage helper function
+const CreateImageResult = struct {
+    image: c.VkImage,
+    memory: c.VkDeviceMemory,
+};
+
+fn createImage(
+    physical_device: c.VkPhysicalDevice,
+    logical_device: c.VkDevice,
+    width: u32,
+    height: u32,
+    format: c.VkFormat,
+    tiling: c.VkImageTiling,
+    usage: c.VkImageUsageFlags,
+    properties: c.VkMemoryPropertyFlags,
+) CreateImageResult {
+    var image: c.VkImage = undefined;
+    var image_memory: c.VkDeviceMemory = undefined;
+    const image_create_info = c.VkImageCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = c.VK_IMAGE_VIEW_TYPE_2D,
+        .extent = .{ .width = width, .height = height, .depth = 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = format,
+        .tiling = tiling,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = usage,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .flags = 0,
+    };
+    const image_create_res = c.vkCreateImage(logical_device, &image_create_info, null, &image);
+    fatalIfNotSuccess(image_create_res, "Failed to create image");
+    var image_mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetImageMemoryRequirements(logical_device, image, &image_mem_requirements);
+    const image_alloc_info = c.VkMemoryAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = image_mem_requirements.size,
+        .memoryTypeIndex = findMemoryType(
+            physical_device,
+            image_mem_requirements.memoryTypeBits,
+            properties,
+        ),
+    };
+    const image_alloc_res = c.vkAllocateMemory(logical_device, &image_alloc_info, null, &image_memory);
+    fatalIfNotSuccess(image_alloc_res, "Failed to allocate image memory");
+    const texture_image_memory_bind_res = c.vkBindImageMemory(logical_device, image, image_memory, 0);
+    fatalIfNotSuccess(texture_image_memory_bind_res, "Failed to bind image memory");
+
+    return CreateImageResult{
+        .image = image,
+        .memory = image_memory,
+    };
+}
+
 // TODO - createImageView helper function
 
 fn chooseSwapExtent(window: *c.GLFWwindow, capabilities: c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
