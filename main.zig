@@ -57,10 +57,6 @@ fn framebufferResizedCallback(_: *c.GLFWwindow, _: i32, _: i32) void {
     framebuffer_resized = true;
 }
 
-// TODO - createBuffer helper function
-// TODO - createImage helper function
-// TODO - createImageView helper function
-
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -446,6 +442,9 @@ pub fn main() void {
     const pool_create_res = c.vkCreateCommandPool(logical_device, &pool_create_info, null, &command_pool);
     fatalIfNotSuccess(pool_create_res, "Failed to create command pool");
 
+    // create depth resources
+    // TODO
+
     // create texture image staging buffer
     var tex_width: i32 = undefined;
     var tex_height: i32 = undefined;
@@ -461,31 +460,15 @@ pub fn main() void {
         fatal("Failed to load texture image");
     }
     const tex_image_size = tex_width * tex_height * 4;
-    var tex_staging_buffer: c.VkBuffer = undefined;
-    var tex_staging_buffer_memory: c.VkDeviceMemory = undefined;
-    const create_tex_staging_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = @intCast(tex_image_size),
-        .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-    const create_tex_staging_buffer_res = c.vkCreateBuffer(logical_device, &create_tex_staging_buffer_info, null, &tex_staging_buffer);
-    fatalIfNotSuccess(create_tex_staging_buffer_res, "Failed to create texture staging buffer");
-    var tex_staging_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(logical_device, tex_staging_buffer, &tex_staging_buffer_mem_requirements);
-    const tex_staging_buffer_alloc_info = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = tex_staging_buffer_mem_requirements.size,
-        .memoryTypeIndex = findMemoryType(
-            physical_device,
-            tex_staging_buffer_mem_requirements.memoryTypeBits,
-            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        ),
-    };
-    const tex_staging_buffer_alloc_res = c.vkAllocateMemory(logical_device, &tex_staging_buffer_alloc_info, null, &tex_staging_buffer_memory);
-    fatalIfNotSuccess(tex_staging_buffer_alloc_res, "Failed to allocated texture staging buffer memory");
-    const bind_tex_staging_buffer_memory_res = c.vkBindBufferMemory(logical_device, tex_staging_buffer, tex_staging_buffer_memory, 0);
-    fatalIfNotSuccess(bind_tex_staging_buffer_memory_res, "Failed to bind texture staging buffer memory");
+    const tex_staging_buffer_create_res = createBuffer(
+        physical_device,
+        logical_device,
+        @intCast(tex_image_size),
+        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    );
+    const tex_staging_buffer = tex_staging_buffer_create_res.buffer;
+    const tex_staging_buffer_memory = tex_staging_buffer_create_res.memory;
 
     // copy image data into texture staging buffer
     var tex_image_data: *anyopaque = undefined;
@@ -616,58 +599,26 @@ pub fn main() void {
 
     // create vertex staging buffer
     const vertex_buffer_size: u64 = @sizeOf(Vertex) * vertices.len;
-    var vertex_staging_buffer: c.VkBuffer = undefined;
-    const create_vertex_staging_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = vertex_buffer_size,
-        .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-    const create_vertex_staging_buffer_res = c.vkCreateBuffer(logical_device, &create_vertex_staging_buffer_info, null, &vertex_staging_buffer);
-    fatalIfNotSuccess(create_vertex_staging_buffer_res, "Failed to create staging buffer");
-    var vertex_staging_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(logical_device, vertex_staging_buffer, &vertex_staging_buffer_mem_requirements);
-    var vertex_staging_buffer_memory: c.VkDeviceMemory = undefined;
-    const vertex_staging_buffer_alloc_info = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = vertex_staging_buffer_mem_requirements.size,
-        .memoryTypeIndex = findMemoryType(
-            physical_device,
-            vertex_staging_buffer_mem_requirements.memoryTypeBits,
-            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        ),
-    };
-    const vertex_staging_buffer_alloc_res = c.vkAllocateMemory(logical_device, &vertex_staging_buffer_alloc_info, null, &vertex_staging_buffer_memory);
-    fatalIfNotSuccess(vertex_staging_buffer_alloc_res, "Failed to allocate staging buffer memory");
-    const bind_vertex_staging_buffer_memory_res = c.vkBindBufferMemory(logical_device, vertex_staging_buffer, vertex_staging_buffer_memory, 0);
-    fatalIfNotSuccess(bind_vertex_staging_buffer_memory_res, "Failed to bind staging buffer memory");
+    const vertex_staging_buffer_create_res = createBuffer(
+        physical_device,
+        logical_device,
+        vertex_buffer_size,
+        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    );
+    const vertex_staging_buffer = vertex_staging_buffer_create_res.buffer;
+    const vertex_staging_buffer_memory = vertex_staging_buffer_create_res.memory;
 
     // create vertex buffer
-    var vertex_buffer: c.VkBuffer = undefined;
-    const create_vertex_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = vertex_buffer_size,
-        .usage = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-    const create_vertex_buffer_res = c.vkCreateBuffer(logical_device, &create_vertex_buffer_info, null, &vertex_buffer);
-    fatalIfNotSuccess(create_vertex_buffer_res, "Failed to create vertex buffer");
-    var vertex_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &vertex_buffer_mem_requirements);
-    var vertex_buffer_memory: c.VkDeviceMemory = undefined;
-    const vertex_buffer_alloc_info = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = vertex_buffer_mem_requirements.size,
-        .memoryTypeIndex = findMemoryType(
-            physical_device,
-            vertex_buffer_mem_requirements.memoryTypeBits,
-            c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        ),
-    };
-    const vertex_buffer_alloc_res = c.vkAllocateMemory(logical_device, &vertex_buffer_alloc_info, null, &vertex_buffer_memory);
-    fatalIfNotSuccess(vertex_buffer_alloc_res, "Failed to allocate vertex buffer memory");
-    const bind_vertex_buffer_memory_res = c.vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
-    fatalIfNotSuccess(bind_vertex_buffer_memory_res, "Failed to bind vertex buffer memory");
+    const vertex_buffer_create_res = createBuffer(
+        physical_device,
+        logical_device,
+        vertex_buffer_size,
+        c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+    const vertex_buffer = vertex_buffer_create_res.buffer;
+    const vertex_buffer_memory = vertex_buffer_create_res.memory;
 
     // copy data from vertex staging buffer to vertex buffer
     var data: *anyopaque = undefined;
@@ -695,59 +646,28 @@ pub fn main() void {
 
     // create index staging buffer
     const index_buffer_size = @sizeOf(@TypeOf(indices[0])) * indices.len;
-    var index_staging_buffer: c.VkBuffer = undefined;
-    const create_index_staging_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = vertex_buffer_size,
-        .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-    const create_index_staging_buffer_res = c.vkCreateBuffer(logical_device, &create_index_staging_buffer_info, null, &index_staging_buffer);
-    fatalIfNotSuccess(create_index_staging_buffer_res, "Failed to create staging buffer");
-    var index_staging_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(logical_device, index_staging_buffer, &index_staging_buffer_mem_requirements);
-    var index_staging_buffer_memory: c.VkDeviceMemory = undefined;
-    const index_staging_buffer_alloc_info = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = index_staging_buffer_mem_requirements.size,
-        .memoryTypeIndex = findMemoryType(
-            physical_device,
-            index_staging_buffer_mem_requirements.memoryTypeBits,
-            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        ),
-    };
-    const index_staging_buffer_alloc_res = c.vkAllocateMemory(logical_device, &index_staging_buffer_alloc_info, null, &index_staging_buffer_memory);
-    fatalIfNotSuccess(index_staging_buffer_alloc_res, "Failed to allocate staging buffer memory");
-    const bind_index_staging_buffer_memory_res = c.vkBindBufferMemory(logical_device, index_staging_buffer, index_staging_buffer_memory, 0);
-    fatalIfNotSuccess(bind_index_staging_buffer_memory_res, "Failed to bind staging buffer memory");
+    const index_staging_buffer_create_res = createBuffer(
+        physical_device,
+        logical_device,
+        index_buffer_size,
+        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    );
+    const index_staging_buffer = index_staging_buffer_create_res.buffer;
+    const index_staging_buffer_memory = index_staging_buffer_create_res.memory;
 
     // create index buffer
-    var index_buffer: c.VkBuffer = undefined;
-    const create_index_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = index_buffer_size,
-        .usage = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-    const create_index_buffer_res = c.vkCreateBuffer(logical_device, &create_index_buffer_info, null, &index_buffer);
-    fatalIfNotSuccess(create_index_buffer_res, "Failed to create indices buffer");
-    var index_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(logical_device, index_buffer, &index_buffer_mem_requirements);
-    var index_buffer_memory: c.VkDeviceMemory = undefined;
-    const index_buffer_alloc_info = c.VkMemoryAllocateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = index_buffer_mem_requirements.size,
-        .memoryTypeIndex = findMemoryType(
-            physical_device,
-            index_buffer_mem_requirements.memoryTypeBits,
-            c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        ),
-    };
-    const index_buffer_alloc_res = c.vkAllocateMemory(logical_device, &index_buffer_alloc_info, null, &index_buffer_memory);
-    fatalIfNotSuccess(index_buffer_alloc_res, "Failed to allocate indices buffer memory");
-    const bind_index_buffer_memory_res = c.vkBindBufferMemory(logical_device, index_buffer, index_buffer_memory, 0);
-    fatalIfNotSuccess(bind_index_buffer_memory_res, "Failed to bind indices buffer memory");
+    const index_buffer_create_res = createBuffer(
+        physical_device,
+        logical_device,
+        index_buffer_size,
+        c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+    const index_buffer = index_buffer_create_res.buffer;
+    const index_buffer_memory = index_buffer_create_res.memory;
 
+    // copy data to index staging buffer
     const index_map_memory_res = c.vkMapMemory(
         logical_device,
         index_staging_buffer_memory,
@@ -778,29 +698,15 @@ pub fn main() void {
     var uniform_buffers_memory: [MAX_FRAMES_IN_FLIGHT]c.VkDeviceMemory = undefined;
     var uniform_buffers_mapped: [MAX_FRAMES_IN_FLIGHT]*anyopaque = undefined;
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-        const create_uniform_buffer_info = c.VkBufferCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = uniform_buffer_size,
-            .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-        };
-        const create_uniform_buffer_res = c.vkCreateBuffer(logical_device, &create_uniform_buffer_info, null, &uniform_buffers[i]);
-        fatalIfNotSuccess(create_uniform_buffer_res, "Failed to create uniform buffer");
-        var uniform_buffer_mem_requirements: c.VkMemoryRequirements = undefined;
-        c.vkGetBufferMemoryRequirements(logical_device, uniform_buffers[i], &uniform_buffer_mem_requirements);
-        const uniform_buffer_alloc_info = c.VkMemoryAllocateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .allocationSize = uniform_buffer_mem_requirements.size,
-            .memoryTypeIndex = findMemoryType(
-                physical_device,
-                uniform_buffer_mem_requirements.memoryTypeBits,
-                c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            ),
-        };
-        const uniform_buffer_alloc_res = c.vkAllocateMemory(logical_device, &uniform_buffer_alloc_info, null, &uniform_buffers_memory[i]);
-        fatalIfNotSuccess(uniform_buffer_alloc_res, "Failed to allocate uniform buffer memory");
-        const bind_uniform_buffer_memory_res = c.vkBindBufferMemory(logical_device, uniform_buffers[i], uniform_buffers_memory[i], 0);
-        fatalIfNotSuccess(bind_uniform_buffer_memory_res, "Failed to bind uniform buffer memory");
+        const uniform_buffer_create_res = createBuffer(
+            physical_device,
+            logical_device,
+            uniform_buffer_size,
+            c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        );
+        uniform_buffers[i] = uniform_buffer_create_res.buffer;
+        uniform_buffers_memory[i] = uniform_buffer_create_res.memory;
         // Note - persistent mapping, by keeping these pointers for the application's lifetime we can write data to it whenever we need to
         const uniform_map_memory_res = c.vkMapMemory(
             logical_device,
@@ -993,6 +899,53 @@ pub fn main() void {
     c.glfwDestroyWindow(window);
     c.glfwTerminate();
 }
+
+const CreateBufferResult = struct {
+    buffer: c.VkBuffer,
+    memory: c.VkDeviceMemory,
+};
+
+fn createBuffer(
+    physical_device: c.VkPhysicalDevice,
+    logical_device: c.VkDevice,
+    size: c.VkDeviceSize,
+    usage: c.VkBufferUsageFlags,
+    properties: c.VkMemoryPropertyFlags,
+) CreateBufferResult {
+    const buffer_create_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    var buffer: c.VkBuffer = undefined;
+    const buffer_create_res = c.vkCreateBuffer(logical_device, &buffer_create_info, null, &buffer);
+    fatalIfNotSuccess(buffer_create_res, "Failed to create buffer");
+
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(logical_device, buffer, &mem_requirements);
+
+    var buffer_alloc_info = c.VkMemoryAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_requirements.size,
+        .memoryTypeIndex = findMemoryType(physical_device, mem_requirements.memoryTypeBits, properties),
+    };
+    var buffer_memory: c.VkDeviceMemory = undefined;
+    const buffer_alloc_res = c.vkAllocateMemory(logical_device, &buffer_alloc_info, null, &buffer_memory);
+    fatalIfNotSuccess(buffer_alloc_res, "Failed to allocate buffer memory");
+
+    const buffer_bind_res = c.vkBindBufferMemory(logical_device, buffer, buffer_memory, 0);
+    fatalIfNotSuccess(buffer_bind_res, "Failed to bind buffer memory");
+
+    return CreateBufferResult{
+        .buffer = buffer,
+        .memory = buffer_memory,
+    };
+}
+
+// TODO - createImage helper function
+// TODO - createImageView helper function
 
 fn chooseSwapExtent(window: *c.GLFWwindow, capabilities: c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
     if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
