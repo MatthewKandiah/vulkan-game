@@ -240,6 +240,27 @@ pub fn main() void {
     var present_queue: c.VkQueue = undefined;
     c.vkGetDeviceQueue(logical_device, queue_family_indices.present_family.?, 0, &present_queue);
 
+    // create depth resources
+    const depth_format = c.VK_FORMAT_D32_SFLOAT;
+    const depth_image_create_res = createImage(
+        physical_device,
+        logical_device,
+        swapchain_extent.width,
+        swapchain_extent.height,
+        depth_format,
+        c.VK_IMAGE_TILING_OPTIMAL,
+        c.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+    var depth_image = depth_image_create_res.image;
+    var depth_image_memory = depth_image_create_res.memory;
+    var depth_image_view = createImageView(
+        logical_device,
+        depth_image,
+        depth_format,
+        c.VK_IMAGE_ASPECT_DEPTH_BIT,
+    );
+
     // create render pass
     const color_attachment = c.VkAttachmentDescription{
         .format = swapchain_image_format,
@@ -255,29 +276,45 @@ pub fn main() void {
         .attachment = 0,
         .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
+    const depth_attachment = c.VkAttachmentDescription{
+        .format = depth_format,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+    const depth_attachment_ref = c.VkAttachmentReference{
+        .attachment = 1,
+        .layout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
     const subpass = c.VkSubpassDescription{
         .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
         .pColorAttachments = &color_attachment_ref,
+        .pDepthStencilAttachment = &depth_attachment_ref,
     };
     const subpass_dependency = c.VkSubpassDependency{
         .srcSubpass = c.VK_SUBPASS_EXTERNAL,
         .dstSubpass = 0,
-        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .srcAccessMask = 0,
-        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        .srcAccessMask = c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
     };
-    var render_pass: c.VkRenderPass = undefined;
+    const attachments = [_]c.VkAttachmentDescription{ color_attachment, depth_attachment };
     const render_pass_create_info = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments = &color_attachment,
+        .attachmentCount = attachments.len,
+        .pAttachments = &attachments,
         .subpassCount = 1,
         .pSubpasses = &subpass,
         .dependencyCount = 1,
         .pDependencies = &subpass_dependency,
     };
+    var render_pass: c.VkRenderPass = undefined;
     const render_pass_create_res = c.vkCreateRenderPass(logical_device, &render_pass_create_info, null, &render_pass);
     fatalIfNotSuccess(render_pass_create_res, "Failed to create render pass");
 
@@ -399,6 +436,14 @@ pub fn main() void {
     };
     const pipeline_layout_create_res = c.vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info, null, &pipeline_layout);
     fatalIfNotSuccess(pipeline_layout_create_res, "Failed to create pipeline layout");
+    const depth_stencil_create_info = c.VkPipelineDepthStencilStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = c.VK_TRUE,
+        .depthWriteEnable = c.VK_TRUE,
+        .depthCompareOp = c.VK_COMPARE_OP_LESS,
+        .depthBoundsTestEnable = c.VK_FALSE,
+        .stencilTestEnable = c.VK_FALSE,
+    };
     const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = 2,
@@ -408,7 +453,7 @@ pub fn main() void {
         .pViewportState = &pipeline_viewport_state_create_info,
         .pRasterizationState = &pipeline_rasterization_state_create_info,
         .pMultisampleState = &pipeline_multisample_state_create_info,
-        .pDepthStencilState = null,
+        .pDepthStencilState = &depth_stencil_create_info,
         .pColorBlendState = &pipeline_color_blend_state_create_info,
         .pDynamicState = &pipeline_dynamic_state_create_info,
         .layout = pipeline_layout,
@@ -427,6 +472,7 @@ pub fn main() void {
     var swapchain_framebuffers = createFramebuffers(
         allocator,
         swapchain_image_views,
+        depth_image_view,
         render_pass,
         swapchain_extent,
         logical_device,
@@ -441,9 +487,6 @@ pub fn main() void {
     var command_pool: c.VkCommandPool = undefined;
     const pool_create_res = c.vkCreateCommandPool(logical_device, &pool_create_info, null, &command_pool);
     fatalIfNotSuccess(pool_create_res, "Failed to create command pool");
-
-    // create depth resources
-    // TODO
 
     // read in texture image
     var tex_width: i32 = undefined;
@@ -825,6 +868,10 @@ pub fn main() void {
             start_time_millis,
             &descriptor_sets[current_frame_index],
             pipeline_layout,
+            depth_format,
+            &depth_image_view,
+            &depth_image,
+            &depth_image_memory,
         );
         current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -840,6 +887,9 @@ pub fn main() void {
         swapchain,
         swapchain_image_views,
         swapchain_images,
+        depth_image_view,
+        depth_image,
+        depth_image_memory,
     );
     c.vkDestroySampler(logical_device, texture_sampler, null);
     c.vkDestroyImageView(logical_device, texture_image_view, null);
@@ -1212,17 +1262,19 @@ fn createImageViews(
 fn createFramebuffers(
     allocator: std.mem.Allocator,
     swapchain_image_views: []c.VkImageView,
+    depth_image_view: c.VkImageView,
     render_pass: c.VkRenderPass,
     swapchain_extent: c.VkExtent2D,
     logical_device: c.VkDevice,
 ) []c.VkFramebuffer {
     const swapchain_framebuffers = allocator.alloc(c.VkFramebuffer, swapchain_image_views.len) catch fatalQuiet();
     for (0..swapchain_image_views.len) |i| {
+        const attachments = [_]c.VkImageView{ swapchain_image_views[i], depth_image_view };
         const framebuffer_create_info = c.VkFramebufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass,
-            .attachmentCount = 1,
-            .pAttachments = &swapchain_image_views[i],
+            .attachmentCount = attachments.len,
+            .pAttachments = &attachments,
             .width = swapchain_extent.width,
             .height = swapchain_extent.height,
             .layers = 1,
@@ -1292,6 +1344,10 @@ fn drawFrame(
     start_time: i64,
     descriptor_set: *c.VkDescriptorSet,
     pipeline_layout: c.VkPipelineLayout,
+    depth_format: c.VkFormat,
+    depth_image_view: *c.VkImageView,
+    depth_image: *c.VkImage,
+    depth_image_memory: *c.VkDeviceMemory,
 ) void {
     // before we start drawing this frame, we want to wait until the previous frame has finished drawing, or state will bleed from one frame into the next
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
@@ -1316,6 +1372,7 @@ fn drawFrame(
             physical_device,
             logical_device,
             render_pass,
+            depth_format,
             RecreateSwapchainUpdatePointers{
                 .swapchain = swapchain,
                 .swapchain_format = swapchain_format,
@@ -1323,6 +1380,9 @@ fn drawFrame(
                 .swapchain_image_views = swapchain_image_views,
                 .swapchain_images = swapchain_images,
                 .swapchain_framebuffers = swapchain_framebuffers,
+                .depth_image_view = depth_image_view,
+                .depth_image = depth_image,
+                .depth_image_memory = depth_image_memory,
             },
         );
         return; // if swapchain is incompatible then we have to do this, we could choose not to for the suboptimal case
@@ -1345,10 +1405,13 @@ fn drawFrame(
     const begin_res = c.vkBeginCommandBuffer(command_buffer, &begin_info);
     fatalIfNotSuccess(begin_res, "Failed to begin recording command buffer");
 
-    // clear to opaque black
     const clear_color = c.VkClearValue{
         .color = .{ .float32 = .{ 0, 0, 0, 1 } },
     };
+    const clear_depth_stencil = c.VkClearValue{
+        .depthStencil = .{ .depth = 1, .stencil = 0 },
+    };
+    const clear_values = [_]c.VkClearValue{ clear_color, clear_depth_stencil };
 
     // start render pass - we're about to start processing graphics commands
     const render_pass_info = c.VkRenderPassBeginInfo{
@@ -1359,8 +1422,8 @@ fn drawFrame(
             .offset = .{ .x = 0, .y = 0 },
             .extent = swapchain_extent.*,
         },
-        .clearValueCount = 1,
-        .pClearValues = &clear_color,
+        .clearValueCount = 2,
+        .pClearValues = &clear_values,
     };
     c.vkCmdBeginRenderPass(
         command_buffer,
@@ -1480,6 +1543,7 @@ fn drawFrame(
             physical_device,
             logical_device,
             render_pass,
+            depth_format,
             RecreateSwapchainUpdatePointers{
                 .swapchain = swapchain,
                 .swapchain_format = swapchain_format,
@@ -1487,6 +1551,9 @@ fn drawFrame(
                 .swapchain_image_views = swapchain_image_views,
                 .swapchain_images = swapchain_images,
                 .swapchain_framebuffers = swapchain_framebuffers,
+                .depth_image_view = depth_image_view,
+                .depth_image = depth_image,
+                .depth_image_memory = depth_image_memory,
             },
         );
         return; // if swapchain is incompatible then we have to do this, we could choose not to for the suboptimal case
@@ -1502,6 +1569,9 @@ const RecreateSwapchainUpdatePointers = struct {
     swapchain_image_views: *[]c.VkImageView,
     swapchain_images: *[]c.VkImage,
     swapchain_framebuffers: *[]c.VkFramebuffer,
+    depth_image_view: *c.VkImageView,
+    depth_image: *c.VkImage,
+    depth_image_memory: *c.VkDeviceMemory,
 };
 
 fn recreateSwapchain(
@@ -1512,6 +1582,7 @@ fn recreateSwapchain(
     physical_device: c.VkPhysicalDevice,
     logical_device: c.VkDevice,
     render_pass: c.VkRenderPass,
+    depth_format: c.VkFormat,
     update_pointers: RecreateSwapchainUpdatePointers,
 ) void {
     var width: i32 = 0;
@@ -1531,6 +1602,9 @@ fn recreateSwapchain(
         update_pointers.swapchain.*,
         update_pointers.swapchain_image_views.*,
         update_pointers.swapchain_images.*,
+        update_pointers.depth_image_view.*,
+        update_pointers.depth_image.*,
+        update_pointers.depth_image_memory.*,
     );
     const swapchain_info = createSwapchain(
         allocator,
@@ -1551,9 +1625,28 @@ fn recreateSwapchain(
     );
     const new_image_views = swapchain_images_and_image_views.image_views;
     const new_images = swapchain_images_and_image_views.images;
+    const depth_image_create_res = createImage(
+        physical_device,
+        logical_device,
+        new_swapchain_extent.width,
+        new_swapchain_extent.height,
+        depth_format,
+        c.VK_IMAGE_TILING_OPTIMAL,
+        c.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+    const new_depth_image = depth_image_create_res.image;
+    const new_depth_image_memory = depth_image_create_res.memory;
+    const new_depth_image_view = createImageView(
+        logical_device,
+        new_depth_image,
+        depth_format,
+        c.VK_IMAGE_ASPECT_DEPTH_BIT,
+    );
     const new_framebuffers = createFramebuffers(
         allocator,
         new_image_views,
+        new_depth_image_view,
         render_pass,
         new_swapchain_extent,
         logical_device,
@@ -1564,6 +1657,9 @@ fn recreateSwapchain(
     update_pointers.swapchain_images.* = new_images;
     update_pointers.swapchain_image_views.* = new_image_views;
     update_pointers.swapchain_framebuffers.* = new_framebuffers;
+    update_pointers.depth_image_view.* = new_depth_image_view;
+    update_pointers.depth_image.* = new_depth_image;
+    update_pointers.depth_image_memory.* = new_depth_image_memory;
 }
 
 fn cleanupSwapchain(
@@ -1573,7 +1669,13 @@ fn cleanupSwapchain(
     swapchain: c.VkSwapchainKHR,
     swapchain_image_views: []c.VkImageView,
     swapchain_images: []c.VkImage,
+    depth_image_view: c.VkImageView,
+    depth_image: c.VkImage,
+    depth_image_memory: c.VkDeviceMemory,
 ) void {
+    c.vkDestroyImageView(logical_device, depth_image_view, null);
+    c.vkDestroyImage(logical_device, depth_image, null);
+    c.vkFreeMemory(logical_device, depth_image_memory, null);
     for (swapchain_framebuffers) |fb| {
         c.vkDestroyFramebuffer(logical_device, fb, null);
     }
