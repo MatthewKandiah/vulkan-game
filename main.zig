@@ -535,22 +535,12 @@ pub fn main() void {
     c.vkFreeMemory(logical_device, tex_staging_buffer_memory, null);
 
     // create texture image view
-    var texture_image_view: c.VkImageView = undefined;
-    const texture_image_view_create_info = c.VkImageViewCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = texture_image,
-        .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
-        .format = c.VK_FORMAT_R8G8B8A8_SRGB,
-        .subresourceRange = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-    const texture_image_view_create_res = c.vkCreateImageView(logical_device, &texture_image_view_create_info, null, &texture_image_view);
-    fatalIfNotSuccess(texture_image_view_create_res, "Failed to create texture image view");
+    const texture_image_view = createImageView(
+        logical_device,
+        texture_image,
+        c.VK_FORMAT_R8G8B8A8_SRGB,
+        c.VK_IMAGE_ASPECT_COLOR_BIT,
+    );
 
     // create texture sampler
     var physical_device_properties: c.VkPhysicalDeviceProperties = undefined;
@@ -980,7 +970,26 @@ fn createImage(
     };
 }
 
-// TODO - createImageView helper function
+fn createImageView(
+    logical_device: c.VkDevice,
+    image: c.VkImage,
+    format: c.VkFormat,
+    aspect_flags: c.VkImageAspectFlags,
+) c.VkImageView {
+    const image_view_create_info = c.VkImageViewCreateInfo{ .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = image, .viewType = c.VK_IMAGE_VIEW_TYPE_2D, .format = format, .subresourceRange = .{
+        .aspectMask = aspect_flags,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    } };
+
+    var image_view: c.VkImageView = undefined;
+    const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &image_view);
+    fatalIfNotSuccess(image_view_create_res, "Failed to create image view");
+
+    return image_view;
+}
 
 fn chooseSwapExtent(window: *c.GLFWwindow, capabilities: c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
     if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
@@ -1186,26 +1195,13 @@ fn createImageViews(
     // create swapchain image views
     const swapchain_image_views = allocator.alloc(c.VkImageView, swapchain_image_count) catch fatalQuiet();
     for (swapchain_images, 0..) |image, i| {
-        var image_view_create_info = std.mem.zeroes(c.VkImageViewCreateInfo);
-        image_view_create_info.sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        image_view_create_info.image = image;
-        image_view_create_info.viewType = c.VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.format = swapchain_image_format;
-        image_view_create_info.components = .{
-            .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-            .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
-        };
-        image_view_create_info.subresourceRange = .{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-        const image_view_create_res = c.vkCreateImageView(logical_device, &image_view_create_info, null, &swapchain_image_views[i]);
-        fatalIfNotSuccess(image_view_create_res, "Failed to create image view");
+        const swapchain_image_view = createImageView(
+            logical_device,
+            image,
+            swapchain_image_format,
+            c.VK_IMAGE_ASPECT_COLOR_BIT,
+        );
+        swapchain_image_views[i] = swapchain_image_view;
     }
     return ImagesAndImageViews{
         .image_views = swapchain_image_views,
