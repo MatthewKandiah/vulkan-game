@@ -28,6 +28,9 @@ const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.fra
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
+const MODEL_PATH = "models/viking_room.obj";
+const TEXTURE_PATH = "textures/viking_room.png";
+
 const vertices = [_]Vertex{
     // first square
     Vertex.new(-0.5, -0.5, 0, 1, 0, 0, 1, 0),
@@ -493,7 +496,7 @@ pub fn main() void {
     var tex_height: i32 = undefined;
     var tex_channels: i32 = undefined;
     const tex_pixels = c.stbi_load(
-        "textures/texture.jpg",
+        TEXTURE_PATH,
         &tex_width,
         &tex_height,
         &tex_channels,
