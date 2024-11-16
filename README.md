@@ -3,7 +3,7 @@ Just curious how hard Vulkan is to get up and running compared to OpenGL --- We'
 Following the [Khronos Vulkan tutorial](https://docs.vulkan.org/tutorial/latest/00_Introduction.html), but using Zig instead of C++ because we're here for a good time.
 
 ## TODO
-- Continue from [Loading Models](https://docs.vulkan.org/tutorial/latest/08_Loading_models.html)
+- Continue from [Loading vertices and indices](https://docs.vulkan.org/tutorial/latest/08_Loading_models.html#_loading_vertices_and_indices)
 
 
 ## References
