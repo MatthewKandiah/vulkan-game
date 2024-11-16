@@ -32,26 +32,6 @@ const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 const MODEL_PATH = "models/viking_room.obj";
 const TEXTURE_PATH = "textures/viking_room.png";
 
-const vertices = [_]Vertex{
-    // first square
-    Vertex.new(-0.5, -0.5, 0, 1, 0, 0, 1, 0),
-    Vertex.new(0.5, -0.5, 0, 0, 1, 0, 0, 0),
-    Vertex.new(0.5, 0.5, 0, 0, 0, 1, 0, 1),
-    Vertex.new(-0.5, 0.5, 0, 1, 1, 1, 1, 1),
-    // second square
-    Vertex.new(-0.5, -0.5, -7.5, 1, 0, 0, 1, 0),
-    Vertex.new(0.5, -0.5, -7.5, 0, 1, 0, 0, 0),
-    Vertex.new(0.5, 0.5, -7.5, 0, 0, 1, 0, 1),
-    Vertex.new(-0.5, 0.5, -7.5, 1, 1, 1, 1, 1),
-};
-
-const indices = [_]u32{
-    // first square
-    0, 1, 2, 2, 3, 0,
-    // second square
-    4, 5, 6, 6, 7, 4,
-};
-
 const MAX_FRAMES_IN_FLIGHT = 2;
 
 // nasty global state variable
@@ -67,9 +47,38 @@ pub fn main() void {
     const allocator = gpa.allocator();
 
     // load model
+    // TODO - debug, it's not behaving quite right
     var model = obj.parseObj(allocator, @embedFile(MODEL_PATH)) catch fatal("Failed to load model");
     defer model.deinit(allocator);
-    // TODO - use model to set vertices and indices for rendering
+    // populate indices and vertices buffers with data from model, which will be copied to GPU
+    const vertices = allocator.alloc(Vertex, model.vertices.len / 3) catch fatalQuiet();
+    defer allocator.free(vertices);
+    // think the example file contains a single mesh, so lets check, then we can avoid iterating unnecessarily
+    std.debug.assert(model.meshes.len == 1);
+    const mesh = model.meshes[0];
+    const indices = allocator.alloc(u32, mesh.indices.len) catch fatalQuiet();
+    defer allocator.free(indices);
+    var count: usize = 0;
+    while (true) {
+        const x = model.vertices[count * 3 + 0];
+        const y = model.vertices[count * 3 + 1];
+        const z = model.vertices[count * 3 + 2];
+        const vertex = Vertex{
+            .pos = linalg.Vec3(f32).new(x, y, z),
+            .color = linalg.Vec3(f32).new(0, 0, 0),
+            .tex_coord = linalg.Vec2(f32).new(0, 0),
+        };
+        vertices[count] = vertex;
+        count += 1;
+        if (count * 3 >= model.vertices.len) break;
+    }
+    for (mesh.indices, 0..) |index, index_i| {
+        const vertex_index = index.vertex orelse fatal("index without vertex data");
+        indices[index_i] = vertex_index;
+        const tex_coord_index = index.tex_coord orelse fatal("index without tex_coord_data");
+        vertices[vertex_index].tex_coord.x = model.tex_coords[2 * tex_coord_index];
+        vertices[vertex_index].tex_coord.y = model.tex_coords[2 * tex_coord_index + 1];
+    }
 
     // initialise GLFW window
     const glfw_init_res = c.glfwInit();
@@ -654,7 +663,7 @@ pub fn main() void {
         @ptrCast(&data),
     );
     fatalIfNotSuccess(map_memory_res, "Failed map memory");
-    std.mem.copyForwards(Vertex, @as([*]Vertex, @alignCast(@ptrCast(data)))[0..vertices.len], &vertices);
+    std.mem.copyForwards(Vertex, @as([*]Vertex, @alignCast(@ptrCast(data)))[0..vertices.len], vertices);
     c.vkUnmapMemory(logical_device, vertex_staging_buffer_memory);
     copyBuffer(
         logical_device,
@@ -700,7 +709,7 @@ pub fn main() void {
         @ptrCast(&data),
     );
     fatalIfNotSuccess(index_map_memory_res, "Failed map memory");
-    std.mem.copyForwards(u32, @as([*]u32, @alignCast(@ptrCast(data)))[0..indices.len], &indices);
+    std.mem.copyForwards(u32, @as([*]u32, @alignCast(@ptrCast(data)))[0..indices.len], indices);
     c.vkUnmapMemory(logical_device, index_staging_buffer_memory);
 
     // copy index staging buffer to index buffer
@@ -881,6 +890,7 @@ pub fn main() void {
             &depth_image_view,
             &depth_image,
             &depth_image_memory,
+            indices,
         );
         current_frame_index = (current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -1357,6 +1367,7 @@ fn drawFrame(
     depth_image_view: *c.VkImageView,
     depth_image: *c.VkImage,
     depth_image_memory: *c.VkDeviceMemory,
+    indices: []u32,
 ) void {
     // before we start drawing this frame, we want to wait until the previous frame has finished drawing, or state will bleed from one frame into the next
     const wait_res = c.vkWaitForFences(logical_device, 1, in_flight_fence_ptr, c.VK_TRUE, std.math.maxInt(u64));
@@ -1480,7 +1491,7 @@ fn drawFrame(
     );
 
     // actually update the image data in the current swapchain
-    c.vkCmdDrawIndexed(command_buffer, indices.len, 1, 0, 0, 0);
+    c.vkCmdDrawIndexed(command_buffer, @intCast(indices.len), 1, 0, 0, 0);
 
     // finish the render pass - we're done processing graphics commands
     c.vkCmdEndRenderPass(command_buffer);
@@ -1492,14 +1503,16 @@ fn drawFrame(
     // use time elapsed to get a different angle for each frame
     const current_time_millis = std.time.milliTimestamp();
     const time_millis = current_time_millis - start_time;
-    const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
-    const camera_z_displacement = 3;
+    var angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
+    angle = 0;
+    const camera_z_displacement = 20;
     const ubo = UniformBufferObject{
         // rotation in the x-y plane
-        .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
+        // .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
+        .model = linalg.Mat4(f32).rotation(45, linalg.Vec3(f32).new(0, 0, 1)),
         // move the space forward == move the camera back
         .view = linalg.Mat4(f32).rigidBodyTransform(
-            linalg.degreesToRadians(2),
+            linalg.degreesToRadians(45),
             linalg.Vec3(f32).new(1, 0, 0),
             linalg.Vec3(f32).new(0, 0, camera_z_displacement),
         ),
