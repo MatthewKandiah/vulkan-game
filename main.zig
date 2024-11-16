@@ -3,6 +3,7 @@ const linalg = @import("./linalg.zig");
 const fatal = @import("./fatal.zig").fatal;
 const fatalQuiet = @import("./fatal.zig").fatalQuiet;
 const fatalIfNotSuccess = @import("./fatal.zig").fatalIfNotSuccess;
+const obj = @import("obj");
 
 const c = @cImport({
     @cDefine("GLFW_INCLUDE_VULKAN", {});
@@ -64,6 +65,11 @@ pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    // load model
+    var model = obj.parseObj(allocator, @embedFile(MODEL_PATH)) catch fatal("Failed to load model");
+    defer model.deinit(allocator);
+    // TODO - use model to set vertices and indices for rendering
 
     // initialise GLFW window
     const glfw_init_res = c.glfwInit();

@@ -22,6 +22,8 @@ pub fn build(b: *std.Build) !void {
     exe.linkSystemLibrary("vulkan");
     exe.addIncludePath(b.path("vendor"));
     exe.addCSourceFile(.{ .file = .{ .src_path = .{ .owner = b, .sub_path = "vendor/stb_image_impl.c" } } });
+    const obj_mod = b.dependency("obj", .{ .target = target, .optimize = optimize }).module("obj");
+    exe.root_module.addImport("obj", obj_mod);
     b.installArtifact(exe);
 }
 
