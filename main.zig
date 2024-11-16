@@ -8,6 +8,7 @@ const c = @cImport({
     @cDefine("GLFW_INCLUDE_VULKAN", {});
     @cInclude("GLFW/glfw3.h");
     @cInclude("stb_image.h");
+    @cInclude("tinyobj_loader_c.h");
 });
 
 const DEBUG = std.debug.runtime_safety;
