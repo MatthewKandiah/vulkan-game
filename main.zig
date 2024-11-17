@@ -29,7 +29,7 @@ const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.fra
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
-const MODEL_PATH = "models/viking_room.obj";
+const MODEL_PATH = "models/example.obj";
 const TEXTURE_PATH = "textures/viking_room.png";
 
 const MAX_FRAMES_IN_FLIGHT = 2;
@@ -47,36 +47,39 @@ pub fn main() void {
     const allocator = gpa.allocator();
 
     // load model
-    // TODO - debug, it's not behaving quite right
     var model = obj.parseObj(allocator, @embedFile(MODEL_PATH)) catch fatal("Failed to load model");
     defer model.deinit(allocator);
     // populate indices and vertices buffers with data from model, which will be copied to GPU
     const vertices = allocator.alloc(Vertex, model.vertices.len / 3) catch fatalQuiet();
     defer allocator.free(vertices);
+    // copy vertices into array
+    for (0..vertices.len) |i| {
+        vertices[i] = Vertex{
+            .pos = linalg.Vec3(f32).new(
+                model.vertices[3 * i + 0],
+                model.vertices[3 * i + 1],
+                model.vertices[3 * i + 2],
+            ),
+            .color = linalg.Vec3(f32).new(
+                model.vertices[3 * i + 0],
+                model.vertices[3 * i + 1],
+                model.vertices[3 * i + 2],
+            ),
+            .tex_coord = linalg.Vec2(f32).new(0, 0),
+        };
+    }
     // think the example file contains a single mesh, so lets check, then we can avoid iterating unnecessarily
     std.debug.assert(model.meshes.len == 1);
     const mesh = model.meshes[0];
     const indices = allocator.alloc(u32, mesh.indices.len) catch fatalQuiet();
     defer allocator.free(indices);
-    var count: usize = 0;
-    while (true) {
-        const x = model.vertices[count * 3 + 0];
-        const y = model.vertices[count * 3 + 1];
-        const z = model.vertices[count * 3 + 2];
-        const vertex = Vertex{
-            .pos = linalg.Vec3(f32).new(x, y, z),
-            .color = linalg.Vec3(f32).new(0, 0, 0),
-            .tex_coord = linalg.Vec2(f32).new(0, 0),
-        };
-        vertices[count] = vertex;
-        count += 1;
-        if (count * 3 >= model.vertices.len) break;
-    }
-    for (mesh.indices, 0..) |index, index_i| {
-        const vertex_index = index.vertex orelse fatal("index without vertex data");
-        indices[index_i] = vertex_index;
-        const tex_coord_index = index.tex_coord orelse fatal("index without tex_coord_data");
-        vertices[vertex_index].tex_coord.x = model.tex_coords[2 * tex_coord_index];
+    // copy indices into array and update vertex tex_coord data
+    for (0..indices.len) |i| {
+        const index = mesh.indices[i];
+        const vertex_index = index.vertex orelse fatal("Unexpected null vertex data on index");
+        const tex_coord_index = index.vertex orelse fatal("Unexpected null tex_coord on index");
+        indices[i] = vertex_index;
+        vertices[vertex_index].tex_coord.x = model.tex_coords[2 * tex_coord_index + 0];
         vertices[vertex_index].tex_coord.y = model.tex_coords[2 * tex_coord_index + 1];
     }
 
@@ -1503,13 +1506,13 @@ fn drawFrame(
     // use time elapsed to get a different angle for each frame
     const current_time_millis = std.time.milliTimestamp();
     const time_millis = current_time_millis - start_time;
-    var angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
-    angle = 0;
+    const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
+    // angle = 0;
     const camera_z_displacement = 20;
     const ubo = UniformBufferObject{
         // rotation in the x-y plane
-        // .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
-        .model = linalg.Mat4(f32).rotation(45, linalg.Vec3(f32).new(0, 0, 1)),
+        .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
+        // .model = linalg.Mat4(f32).rotation(45, linalg.Vec3(f32).new(0, 0, 1)),
         // move the space forward == move the camera back
         .view = linalg.Mat4(f32).rigidBodyTransform(
             linalg.degreesToRadians(45),
