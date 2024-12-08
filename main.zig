@@ -29,8 +29,8 @@ const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.fra
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
-const MODEL_PATH = "models/example.obj";
-const TEXTURE_PATH = "textures/viking_room.png";
+const MODEL_PATH = "/home/matt/code/vulkan-game/models/example.obj";
+const TEXTURE_PATH = "/home/matt/code/vulkan-game/textures/viking_room.png";
 
 const MAX_FRAMES_IN_FLIGHT = 2;
 
