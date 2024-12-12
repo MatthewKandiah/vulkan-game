@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    try setupShaderBuildStep(b, allocator);
+    const shader_build_step = try setupShaderBuildStep(b, allocator);
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    exe.step.dependOn(shader_build_step);
     exe.linkLibC();
     exe.linkSystemLibrary("glfw");
     exe.linkSystemLibrary("vulkan");
@@ -27,8 +28,8 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(exe);
 }
 
-fn setupShaderBuildStep(b: *std.Build, allocator: std.mem.Allocator) !void {
-
+fn setupShaderBuildStep(b: *std.Build, allocator: std.mem.Allocator) !*std.Build.Step {
+    const debug_shader_build = b.option(bool, "debug-shaders", "Build shaders with debug info") orelse false;
     // compile shaders
     const input_dir_name = "shaders/";
     const output_dir_name = "shaders-out/";
@@ -79,6 +80,9 @@ fn setupShaderBuildStep(b: *std.Build, allocator: std.mem.Allocator) !void {
         shader_compile_run.addFileArg(std.Build.LazyPath{ .src_path = .{ .owner = b, .sub_path = in_name } });
         shader_compile_run.addArg("-o");
         shader_compile_run.addFileArg(std.Build.LazyPath{ .src_path = .{ .owner = b, .sub_path = out_name } });
+        if (debug_shader_build) {
+          shader_compile_run.addArg("-g");
+        }
         compile_shader_runs[count] = shader_compile_run;
     }
 
@@ -86,6 +90,7 @@ fn setupShaderBuildStep(b: *std.Build, allocator: std.mem.Allocator) !void {
     for (compile_shader_runs) |run| {
         compile_shaders_step.dependOn(&run.step);
     }
+    return compile_shaders_step;
 }
 
 fn makeDirIfItDoesNotExist(b: *std.Build, dir_name: []const u8) !void {

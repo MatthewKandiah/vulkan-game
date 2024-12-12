@@ -100,11 +100,15 @@ pub fn Mat4(comptime T: type) type {
 
         pub fn translation(trans: Vec3(T)) Self {
             return .{
-                .col1 = .{ 1, 0, 0, 0 },
-                .col2 = .{ 0, 1, 0, 0 },
-                .col3 = .{ 0, 0, 1, 0 },
-                .col4 = .{ trans.x, trans.y, trans.z, 1 },
+                .col1 = Vec4(T).new(1, 0, 0, 0),
+                .col2 = Vec4(T).new(0, 1, 0, 0),
+                .col3 = Vec4(T).new(0, 0, 1, 0),
+                .col4 = Vec4(T).new(trans.x, trans.y, trans.z, 1),
             };
+        }
+
+        pub fn identity() Self {
+            return Self.translation(Vec3(T).new(0, 0, 0));
         }
 
         // rotation by angle about normalised vector
