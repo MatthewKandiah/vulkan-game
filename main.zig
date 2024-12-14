@@ -29,7 +29,7 @@ const FRAG_SHADER_FILENAME = "/home/matt/code/vulkan-game/shaders-out/shader.fra
 const VERT_SHADER_RAW: []const u8 align(4) = @embedFile(VERT_SHADER_FILENAME);
 const FRAG_SHADER_RAW: []const u8 align(4) = @embedFile(FRAG_SHADER_FILENAME);
 
-const MODEL_PATH = "/home/matt/code/vulkan-game/models/example.obj";
+const MODEL_PATH = "/home/matt/code/vulkan-game/models/cube.obj";
 const TEXTURE_PATH = "/home/matt/code/vulkan-game/textures/viking_room.png";
 
 const MAX_FRAMES_IN_FLIGHT = 2;
@@ -1506,14 +1506,14 @@ fn drawFrame(
     // use time elapsed to get a different angle for each frame
     const current_time_millis = std.time.milliTimestamp();
     const time_millis = current_time_millis - start_time;
-    const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 500;
-    // angle = 0;
-    const camera_z_displacement = 20;
+    const angle: f32 = @as(f32, @floatFromInt(time_millis)) / 2000;
+    const camera_z_displacement = 100;
     const ubo = UniformBufferObject{
         // rotation in the x-y plane
         .model = linalg.Mat4(f32).rotation(angle, linalg.Vec3(f32).new(0, 0, 1)),
         // .model = linalg.Mat4(f32).rotation(45, linalg.Vec3(f32).new(0, 0, 1)),
         // move the space forward == move the camera back
+        // .view = linalg.Mat4(f32).translation(linalg.Vec3(f32).new(0,0,camera_z_displacement)),
         .view = linalg.Mat4(f32).rigidBodyTransform(
             linalg.degreesToRadians(45),
             linalg.Vec3(f32).new(1, 0, 0),
